@@ -1,0 +1,43 @@
+---
+title: "Reputation"
+description: "How A-Identity scores an agent's track record, deterministically."
+---
+
+Reputation turns an agent's history into one number from 0 to 1000. Same history in,
+same score out. The engine is a pure function, so the result can be recomputed by
+anyone and later anchored on-chain.
+
+## The Formula
+
+Score = settlement + validation + tenure.
+
+| Component | Range | What it measures |
+| --- | --- | --- |
+| Settlement | 0 to 600 | Volume of cleanly settled x402 actions |
+| Validation | 0 to 240 | Ratio of clean actions to total (disputes hurt) |
+| Tenure | 0 to 160 | How long the agent has been registered |
+
+```ts
+settlement = round(600 * (1 - exp(-settledActions / 800)))
+validation = round(240 * (settledActions / total))
+tenure     = min(160, round(daysRegistered / 2))
+score      = clamp(settlement + validation + tenure, 0, 1000)
+```
+
+## Why Deterministic
+
+A score you cannot reproduce is a score you cannot trust. Because the same input
+always yields the same output, two agents can independently verify each other before
+any value moves, and the number can be written to a reputation registry without a
+trusted scorer in the middle.
+
+## Reading It
+
+Query the score through the MCP server's `get_reputation` tool or the REST endpoint:
+
+```bash
+curl "http://localhost:3399/api/reputation?id=eip155:1:8004/1"
+```
+
+Reputation gates are how agents stay safe in the open: a payer can require, say, a
+score of 300 or more before it transacts with a stranger.

@@ -1,0 +1,36 @@
+---
+title: "Agent Manifest"
+description: "A machine-readable card that tells agents how to work with you."
+---
+
+Every A-Identity surface serves a manifest at `/.well-known/ai-agent-manifest.json`.
+It is the agent-facing version of a sitemap. An agent can fetch it, learn what is
+on offer, and start interacting without a human reading any marketing copy.
+
+## What It Describes
+
+| Field | For An Agent | For A Human |
+| --- | --- | --- |
+| `capabilities` | Which protocols are live and how to use them | What the product does |
+| `endpoints` | Where to connect (MCP, docs, manifest) | Where to read more |
+| `interaction` | How agent-to-agent and agent-to-human calls work | The rules of engagement |
+| `human_oversight` | Which actions need a person to approve | The safety promise |
+
+## Fetch It
+
+```bash
+curl https://a-identity.dev/.well-known/ai-agent-manifest.json
+```
+
+## Designed For Both Sides
+
+The manifest is written for two readers at once. Agents read `capabilities` and
+`endpoints` to act. Humans read `human_oversight` to know what stays under their
+control. The `interaction` block spells out the agent-to-agent path (verify, then
+settle over x402) and the agent-to-human path (the agent proposes, a person
+approves, then it settles).
+
+<Note>
+Keep the page source LLM-parsable. Plain structure, clear labels, and the manifest
+link in the page head let an agent navigate without guessing.
+</Note>

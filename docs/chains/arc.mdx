@@ -1,0 +1,164 @@
+---
+title: "Build on Arc"
+description: "Connect to Circle Arc, where agents pay gas in USDC. Network config, App Kit unified balance, and deploy steps."
+---
+
+Arc is an EVM chain from Circle where **gas is paid in USDC**, not a volatile native
+token, with sub-second deterministic finality. For an agent that just wants to pay
+for a thing, that removes a whole class of failure. A-Identity uses Arc as its
+primary settlement rail.
+
+<Frame caption="Gas is paid in USDC, and blocks finalize in well under a second.">
+  <img src="/images/arc-gas.svg" alt="A USDC coin pays gas as Arc produces blocks" />
+</Frame>
+
+## Why Arc
+
+<CardGroup cols={3}>
+  <Card title="USDC is the gas" icon="gas-pump">
+    No second token to hold, price, or refill. The agent pays fees in the same dollar it is already moving.
+  </Card>
+  <Card title="Sub-second finality" icon="bolt">
+    Deterministic finality in well under a second. The payment either happened or it did not, and the agent knows at once.
+  </Card>
+  <Card title="EVM compatible" icon="cube">
+    Standard Ethereum bytecode and RPC. ERC-8004 identity and x402 payments port over with no rewrite.
+  </Card>
+</CardGroup>
+
+<Note>
+  Mainnet is not public yet. Everything here targets **Arc Testnet**. Get testnet
+  USDC from the [Circle faucet](https://faucet.circle.com).
+</Note>
+
+## Network Config
+
+| Field | Value |
+| --- | --- |
+| Chain ID | `5042002` |
+| Native currency | USDC (18 decimals) |
+| RPC (HTTP) | `https://rpc.testnet.arc.network` |
+| RPC (WebSocket) | `wss://rpc.testnet.arc.network` |
+| Block explorer | [testnet.arcscan.app](https://testnet.arcscan.app) |
+| Faucet | [faucet.circle.com](https://faucet.circle.com) |
+
+<Warning>
+  Arc has a **dual USDC interface**: the native balance uses 18 decimals while the
+  ERC-20 interface uses 6. Both point at the same underlying balance. Set
+  display decimals correctly or amounts will look off by a factor of a trillion.
+</Warning>
+
+## Connect With viem
+
+<CodeGroup>
+```ts chain.ts
+import { defineChain } from 'viem'
+
+export const arcTestnet = defineChain({
+  id: 5042002,
+  name: 'Arc Testnet',
+  nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 18 },
+  rpcUrls: {
+    default: {
+      http: ['https://rpc.testnet.arc.network'],
+      webSocket: ['wss://rpc.testnet.arc.network'],
+    },
+  },
+  blockExplorers: {
+    default: { name: 'Arcscan', url: 'https://testnet.arcscan.app' },
+  },
+  testnet: true,
+})
+```
+
+```ts read.ts
+import { createPublicClient, http } from 'viem'
+import { arcTestnet } from './chain'
+
+const client = createPublicClient({ chain: arcTestnet, transport: http() })
+
+// Read-only, no keys needed.
+const chainId = await client.getChainId()      // 5042002
+const block = await client.getBlockNumber()    // latest block
+```
+</CodeGroup>
+
+A-Identity already does this read for you. The MCP server exposes it live:
+
+```bash
+curl http://localhost:3399/api/arc
+# { "online": true, "chainId": 5042002, "blockNumber": "...", "gasToken": "USDC", ... }
+```
+
+## Unified Balance With App Kit
+
+Circle App Kit pools USDC from several chains into one spendable balance (Circle
+Gateway), so an agent is never stuck with funds on the wrong chain.
+
+<Steps>
+  <Step title="Install">
+    ```bash
+    npm install @circle-fin/app-kit @circle-fin/adapter-viem-v2 viem
+    ```
+  </Step>
+  <Step title="Deposit from any chain">
+    ```ts
+    await kit.unifiedBalance.deposit({
+      from: { adapter: viemAdapter, chain: 'Base_Sepolia' },
+      amount: '1.00',
+      token: 'USDC',
+    })
+    ```
+  </Step>
+  <Step title="Spend on Arc">
+    ```ts
+    await kit.unifiedBalance.spend({
+      amount: '1.50',
+      from: { adapter: viemAdapter },
+      to: { adapter: viemAdapter, chain: 'Arc_Testnet', recipientAddress: '0x...' },
+    })
+    ```
+  </Step>
+</Steps>
+
+In A-Identity, the Wallet screen shows this unified balance, and deposit or spend
+above your limit pauses for human approval.
+
+## Deploy A Contract
+
+Arc deploys with the standard EVM toolchain. Gas is paid in USDC, so fund the
+deployer wallet from the faucet first.
+
+<Steps>
+  <Step title="Install Foundry">
+    ```bash
+    curl -L https://foundry.paradigm.xyz | bash
+    foundryup
+    ```
+  </Step>
+  <Step title="Create and fund a wallet">
+    ```bash
+    cast wallet new
+    # then request testnet USDC at https://faucet.circle.com
+    ```
+  </Step>
+  <Step title="Deploy">
+    ```bash
+    forge create src/Counter.sol:Counter \
+      --rpc-url https://rpc.testnet.arc.network \
+      --private-key $PRIVATE_KEY \
+      --broadcast
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  A-Identity never deploys a contract or moves real value on its own. Deployment
+  holds a key, so it is human-on-the-loop: a person runs it and approves it.
+</Warning>
+
+## Where Arc Fits
+
+Arc is the **primary rail**: gas in USDC, unified balance, and nanopayments down to
+a millionth of a dollar. Base and the other chains are fallbacks. Identity stays on
+ERC-8004, which Arc speaks natively because it is EVM compatible.

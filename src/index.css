@@ -1,0 +1,35 @@
+/* Remote @import rules must come first */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import 'tailwindcss';
+
+/* Tailwind v4 design tokens that generate utilities like bg-accent, text-ink,
+   font-heading. Also emitted as :root CSS variables. */
+@theme {
+  --color-ink: #192837;
+  --color-accent: #7342e2;
+  --color-cream: #f2f2ee;
+  --color-sand: #cfc8c5;
+
+  --font-heading: 'Helvetica Now Display Bold', sans-serif;
+  --font-body: 'Inter', sans-serif;
+}
+
+:root {
+  /* Spec-named aliases kept for the landing components that reference them */
+  --color-text: var(--color-ink);
+  --color-login-bg: var(--color-cream);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

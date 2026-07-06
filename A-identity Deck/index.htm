@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A-Identity · Pitch Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16131F; --cream:#F4F2EC; --paper:#FFFFFF;
+    --purple:#6B4EE6; --purple-d:#5538C9; --purple-l:#9A82FF;
+    --indigo:#141029; --indigo-2:#211C40; --indigo-line:#352F62;
+    --muted:#5C5A6C; --faint:#8E8C9C; --border:#E6E2D7;
+    --mint:#1FB880; --amber:#D98A1F;
+    --sans:'Funnel Display',system-ui,sans-serif;
+    --mono:'Space Mono',monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--sans);background:var(--ink);color:var(--ink);-webkit-font-smoothing:antialiased}
+
+  .deck{height:100vh;overflow-y:scroll;scroll-snap-type:y mandatory;scroll-behavior:smooth}
+  .slide{height:100vh;width:100vw;scroll-snap-align:start;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+  .slide.light{background:var(--cream);color:var(--ink)}
+  .slide.dark{background:var(--indigo);color:#EDEBF4}
+  .slide.dark::before{content:"";position:absolute;inset:0;
+    background-image:linear-gradient(rgba(154,130,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(154,130,255,.05) 1px,transparent 1px);
+    background-size:46px 46px;pointer-events:none}
+  .inner{width:100%;max-width:1180px;padding:0 64px;position:relative;z-index:2}
+
+  /* type system */
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--purple);font-weight:700;margin-bottom:22px;display:inline-block}
+  .slide.dark .eyebrow{color:var(--purple-l)}
+  h1.display{font-weight:800;font-size:clamp(40px,5.6vw,72px);line-height:1.02;letter-spacing:-.025em}
+  h2.head{font-weight:700;font-size:clamp(28px,3.9vw,46px);line-height:1.07;letter-spacing:-.02em;max-width:15ch}
+  h2.head.wide{max-width:22ch}
+  .lead{font-size:clamp(15px,1.5vw,18px);font-weight:400;color:var(--muted);line-height:1.55;max-width:60ch;margin-top:20px}
+  .slide.dark .lead{color:#B6B1CE}
+  .foot-note{font-size:13.5px;color:var(--muted);margin-top:26px;font-style:italic}
+
+  /* fixed nav */
+  .nav{position:fixed;right:26px;bottom:22px;z-index:50;display:flex;align-items:center;gap:14px;font-family:var(--mono);font-size:12px;color:var(--faint);background:rgba(20,16,41,.0)}
+  .nav .count{color:var(--purple);font-weight:700}
+  .navbtn{width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.18s;color:var(--ink)}
+  .navbtn:hover{background:var(--purple);color:#fff;border-color:var(--purple)}
+  .brandtag{position:fixed;left:26px;bottom:24px;z-index:50;font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--faint)}
+
+  /* logo */
+  .logo{display:flex;align-items:center;gap:12px}
+  .logo svg{width:30px;height:30px;display:block}
+  .logo .name{font-weight:700;font-size:19px;letter-spacing:-.01em}
+  .topbar{position:absolute;top:42px;left:64px;right:64px;display:flex;align-items:center;justify-content:space-between;z-index:3}
+  .topbar .tag{font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--faint)}
+  .slide.dark .topbar .tag{color:#7E78A0}
+
+  /* chips */
+  .chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:34px}
+  .chip{font-family:var(--mono);font-size:12.5px;font-weight:700;letter-spacing:.5px;padding:9px 16px;border-radius:999px}
+  .slide.dark .chip{background:var(--indigo-2);color:#C9BEFF;border:1px solid var(--indigo-line)}
+  .slide.light .chip{background:#EFEBFF;color:var(--purple-d)}
+
+  /* cards */
+  .card{background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:26px;box-shadow:0 10px 30px rgba(22,19,31,.05)}
+  .card .ksub{font-family:var(--mono);font-size:11.5px;letter-spacing:1px;color:var(--purple);font-weight:700;text-transform:uppercase;margin-bottom:10px}
+  .card .ktitle{font-weight:700;font-size:20px;line-height:1.15;letter-spacing:-.01em;margin-bottom:10px}
+  .card .kbody{font-size:14px;color:var(--muted);line-height:1.55}
+  .card .kfoot{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--faint);margin-top:14px;text-transform:uppercase}
+
+  .grid{display:grid;gap:18px;margin-top:36px}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .g2{grid-template-columns:repeat(2,1fr)}
+
+  /* icon tile */
+  .tile{width:52px;height:52px;border-radius:14px;background:var(--purple);display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+  .tile.soft{background:#EFEBFF}
+  .tile svg{width:24px;height:24px;stroke:#fff;fill:none;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round}
+  .tile.soft svg{stroke:var(--purple)}
+
+  /* big stat */
+  .stat{font-weight:800;font-size:clamp(48px,7vw,84px);line-height:.92;letter-spacing:-.03em;color:var(--purple)}
+  .stat-cap{font-size:14.5px;color:var(--muted);line-height:1.5;margin-top:14px;max-width:30ch}
+
+  .statcard{background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 10px 30px rgba(22,19,31,.05)}
+  .statcard .big{font-weight:800;font-size:34px;letter-spacing:-.02em;margin:14px 0 8px}
+  .statcard .lab{font-size:13px;color:var(--muted);line-height:1.45}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;width:100%}
+  .two.lopsided{grid-template-columns:1.05fr .95fr}
+
+  /* mental model card accents */
+  .mm{position:relative}
+  .mm .who{font-family:var(--mono);font-size:11.5px;letter-spacing:1px;font-weight:700;text-transform:uppercase}
+  .mm.elon .who{color:var(--purple)} .mm.fey .who{color:var(--mint)} .mm.naval .who{color:var(--amber)}
+  .mm .dot{position:absolute;top:26px;right:26px;width:9px;height:9px;border-radius:50%}
+  .mm.elon .dot{background:var(--purple)} .mm.fey .dot{background:var(--mint)} .mm.naval .dot{background:var(--amber)}
+
+  /* flow steps */
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:40px}
+  .step{background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:24px 22px;box-shadow:0 10px 30px rgba(22,19,31,.05);position:relative}
+  .step .n{font-family:var(--mono);font-size:13px;font-weight:700;color:#fff;background:var(--purple);width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+  .step .st{font-weight:700;font-size:17px;margin-bottom:8px;letter-spacing:-.01em}
+  .step .sb{font-size:13px;color:var(--muted);line-height:1.5}
+
+  /* friction rows */
+  .frow{display:flex;gap:16px;align-items:flex-start;background:var(--paper);border:1px solid var(--border);border-radius:14px;padding:18px 20px;box-shadow:0 8px 24px rgba(22,19,31,.04)}
+  .frow+.frow{margin-top:14px}
+  .frow .ti{flex:none;width:44px;height:44px;border-radius:12px;background:#EFEBFF;display:flex;align-items:center;justify-content:center}
+  .frow .ti svg{width:21px;height:21px;stroke:var(--purple);fill:none;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round}
+  .frow .ft{font-weight:700;font-size:16px;margin-bottom:3px;letter-spacing:-.01em}
+  .frow .fb{font-size:13px;color:var(--muted);line-height:1.45}
+
+  /* metric mini */
+  .mini{background:var(--paper);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;align-items:center;gap:18px;box-shadow:0 8px 24px rgba(22,19,31,.04)}
+  .mini+.mini{margin-top:14px}
+  .mini .mn{font-weight:800;font-size:30px;letter-spacing:-.02em;color:var(--purple);flex:none;min-width:96px}
+  .mini .ml{font-size:13.5px;color:var(--muted);line-height:1.45}
+
+  /* players list */
+  .plist{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:30px}
+  .player{background:var(--paper);border:1px solid var(--border);border-radius:14px;padding:18px 20px;box-shadow:0 8px 22px rgba(22,19,31,.04)}
+  .player .pn{font-weight:700;font-size:16.5px;letter-spacing:-.01em;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .player .pb{font-size:13px;color:var(--muted);line-height:1.5;margin-top:7px}
+  .badge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:5px 10px;border-radius:999px;flex:none}
+  .badge.base{background:#EFEBFF;color:var(--purple-d)}
+  .badge.ally{background:#E6F7F0;color:#137a53}
+  .badge.rival{background:#FBEEDC;color:#9a5f12}
+  .badge.comp{background:#F0EEF6;color:#5b576e}
+
+  /* positioning quadrant labels */
+  .qwrap{position:relative}
+  .qlabel{position:absolute;font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--faint);text-transform:uppercase}
+
+  /* status chips dark */
+  .status{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:38px}
+  .scard{background:var(--indigo-2);border:1px solid var(--indigo-line);border-radius:14px;padding:18px 20px}
+  .scard .sc-t{font-weight:700;font-size:16px;display:flex;align-items:center;gap:10px;color:#fff}
+  .scard .sc-b{font-size:12.5px;color:#ADA8C6;line-height:1.45;margin-top:8px}
+  .scard .ck{width:18px;height:18px;flex:none}
+  .scard .ck svg{width:18px;height:18px;stroke:#54E0A6;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+
+  .reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+  .reveal.in{opacity:1;transform:none}
+
+  @media (prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}.dotpulse{animation:none!important}}
+
+  .dotpulse{animation:pulse 2.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+  @media print{
+    @page{size:1280px 720px;margin:0}
+    html,body{height:auto}
+    .deck{height:auto;overflow:visible;display:block}
+    .slide{height:720px;width:1280px;page-break-after:always;break-after:page}
+    .nav,.brandtag{display:none}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .reveal{opacity:1;transform:none}
+  }
+</style>
+<noscript><style>.reveal{opacity:1!important;transform:none!important}</style></noscript>
+</head>
+<body>
+<div class="deck" id="deck">
+
+  <!-- 1 · TITLE -->
+  <section class="slide dark">
+    <div class="topbar">
+      <div class="logo">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <g transform="translate(50,50)">
+            <rect x="-11" y="-36" width="22" height="72" rx="11" fill="#9A82FF" transform="rotate(0)"/>
+            <rect x="-11" y="-36" width="22" height="72" rx="11" fill="#9A82FF" transform="rotate(60)"/>
+            <rect x="-11" y="-36" width="22" height="72" rx="11" fill="#9A82FF" transform="rotate(120)"/>
+            <circle r="9" fill="#141029"/>
+          </g>
+        </svg>
+        <span class="name" style="color:#fff">A-Identity</span>
+      </div>
+      <span class="tag">Ajan Kimlik ve Ödeme Katmanı</span>
+    </div>
+    <div class="inner">
+      <span class="eyebrow reveal">AgentIc Economy</span>
+      <h1 class="display reveal" style="color:#fff">AI ajanların pasaportu<br>ve cüzdanı.</h1>
+      <p class="lead reveal">Ajan önce kim olduğunu kanıtlar, sonra saniyeler içinde öder. İnsan yalnızca önemli kararı onaylar.</p>
+      <div class="chips reveal">
+        <span class="chip">ERC-8004</span><span class="chip">x402</span><span class="chip">MCP</span><span class="chip">3 Stablecoin (USDC, USDT, PYUSD)</span>
+      </div>
+      <p style="font-family:var(--mono);font-size:11px;letter-spacing:1px;color:#7E78A0;margin-top:40px" class="reveal">Önce ajanına passport al · Sonra ödemelerde aktif et · SDK ve MCP ile B2B Dağıt</p>
+    </div>
+  </section>
+
+  <!-- 2 · HOW WE THINK -->
+  <section class="slide light">
+    <div class="inner">
+      <span class="eyebrow reveal">Nasıl Düşünüyoruz</span>
+      <h2 class="head wide reveal">Üç zihin, tek ürün.</h2>
+      <p class="lead reveal">Problemi fizikten kurduk, beş yaşına anlatacak kadar sadeleştirdik, uyurken çalışan bir sisteme bağladık.</p>
+      <div class="grid g3">
+        <div class="card mm elon reveal"><span class="dot"></span>
+          <div class="who">Elon Musk · First Principles</div>
+          <div class="ktitle" style="margin-top:10px">Gerçeği parçasına ayır</div>
+          <div class="kbody">Ajan neden ödeyemiyor diye köke indik. Cevap net: ödeme insana göre tasarlandı, ajana göre değil. O yüzden katmanı sıfırdan ajan için kurduk.</div>
+        </div>
+        <div class="card mm fey reveal"><span class="dot"></span>
+          <div class="who">Richard Feynman · Sadeleştirme</div>
+          <div class="ktitle" style="margin-top:10px">Beş yaşına anlat</div>
+          <div class="kbody">Ajan kimliğini gösterir, ücreti görür, öder. Giren 0,01 dolar, çıkan iş. Jargon yok, sürpriz ücret yok, gizli spread yok.</div>
+        </div>
+        <div class="card mm naval reveal"><span class="dot"></span>
+          <div class="who">Naval Ravikant · Kaldıraç</div>
+          <div class="ktitle" style="margin-top:10px">Zaman satma, sistem kur</div>
+          <div class="kbody">Akıllı kontrat bir kez yazılır, milyonlarca kez çalışır. SDK bir framework'e gömülür, dağıtım kendiliğinden büyür.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · PROBLEM -->
+  <section class="slide light">
+    <div class="inner">
+      <span class="eyebrow reveal">PROBLEM</span>
+      <h2 class="head wide reveal">Ajanlar sizin yerinize alışveriş yapıyor.<br>Ödemeyi hâlâ sizin kartınızla deniyor.</h2>
+      <div class="two lopsided" style="margin-top:42px">
+        <div class="reveal">
+          <div class="stat">100M+</div>
+          <p class="stat-cap">Bugün web'de işlem yapan aktif ajan. Sayı seneye milyarı geçiyor. Kök neden basit: altyapı insan için yazıldı, ajan kendi olmayan bir kimliği taklit etmek zorunda.</p>
+        </div>
+        <div class="reveal">
+          <div class="frow"><div class="ti"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></div>
+            <div><div class="ft">Ödeme insana göre</div><div class="fb">Ajan, on altı haneli bir kartı taklit etmeye çalışıyor.</div></div></div>
+          <div class="frow"><div class="ti"><svg viewBox="0 0 24 24"><path d="M9 12a4 4 0 0 1 0-5l1-1a4 4 0 0 1 6 6l-1 1"/><path d="M15 12a4 4 0 0 1 0 5l-1 1a4 4 0 0 1-6-6"/><path d="M4 4l16 16" stroke-width="1.4"/></svg></div>
+            <div><div class="ft">Ajandan ajana köprü yok</div><div class="fb">Bir ajan diğerinden veri alırken güvenli ödeme kanalı yok.</div></div></div>
+          <div class="frow"><div class="ti"><svg viewBox="0 0 24 24"><rect x="5" y="9" width="14" height="11" rx="2"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/><path d="M12 3v3M8 6h8"/></svg></div>
+            <div><div class="ft">KYC ajanı tanımıyor</div><div class="fb">Kimlik süreçleri insan için kurgulandı, ajanın kim olduğu kanıtlanamıyor.</div></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · SOLUTION -->
+  <section class="slide light">
+    <div class="inner">
+      <span class="eyebrow reveal">ÇÖZÜM</span>
+      <h2 class="head wide reveal">Önce doğrula, sonra öde.</h2>
+      <p class="lead reveal">Ajana on-chain bir kimlik veriyoruz, ödemeyi davranışın doğal sonucu haline getiriyoruz.</p>
+      <div class="grid g3">
+        <div class="card reveal">
+          <div class="tile"><svg viewBox="0 0 24 24"><path d="M12 11a3 3 0 0 0-3 3v3"/><path d="M12 7a7 7 0 0 0-7 7v2"/><path d="M12 7a7 7 0 0 1 7 7"/><circle cx="12" cy="11" r="1.2"/></svg></div>
+          <div class="ksub">Verify</div>
+          <div class="ktitle">Know Your Agent</div>
+          <div class="kbody">Her ajan on-chain bir kimlik ve zamanla kazandığı itibar puanı taşır. Kimse veremez, kimse alamaz.</div>
+          <div class="kfoot">ERC-8004</div>
+        </div>
+        <div class="card reveal">
+          <div class="tile"><svg viewBox="0 0 24 24"><path d="M13 3 4 14h6l-1 7 9-11h-6z"/></svg></div>
+          <div class="ksub">Pay</div>
+          <div class="ktitle">Aksiyon başı ödeme</div>
+          <div class="kbody">Ajan her istek için öder, abonelik değil. Ödeme çağrıya iliştirilir ve yaklaşık iki yüz milisaniyede uzlaşır.</div>
+          <div class="kfoot">x402 · USDC</div>
+        </div>
+        <div class="card reveal">
+          <div class="tile"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M6 8.4v3a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3M12 13.4v2.2"/></svg></div>
+          <div class="ksub">Connect</div>
+          <div class="ktitle">Agent-native erişim</div>
+          <div class="kbody">MCP, ajanın veri ve araçlara takıldığı prizdir. Her araca fiyat koy, ajan kendi öder.</div>
+          <div class="kfoot">MCP</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · HOW IT WORKS -->
+  <section class="slide light">
+    <div class="inner">
+      <span class="eyebrow reveal">NASIL ÇALIŞIR</span>
+      <h2 class="head wide reveal">Dört adım, tek tık.</h2>
+      <p class="lead reveal">WYSIWYG. Giren ücreti görürsünüz, çıkan işi alırsınız. Arada gizli adım yoktur.</p>
+      <div class="flow">
+        <div class="step reveal"><div class="n">1</div><div class="st">Tanış</div><div class="sb">Ajan servise ulaşır ve kimliğini sunar.</div></div>
+        <div class="step reveal"><div class="n">2</div><div class="st">Doğrula</div><div class="sb">Kimlik ve itibar ERC-8004 üzerinde kontrol edilir.</div></div>
+        <div class="step reveal"><div class="n">3</div><div class="st">Öde</div><div class="sb">x402 ücreti döner, ajan USDC ile öder. Yaklaşık 200 ms.</div></div>
+        <div class="step reveal"><div class="n">4</div><div class="st">İz bırak</div><div class="sb">İşlem başarılıysa ajanın itibar puanı artar.</div></div>
+      </div>
+      <p class="foot-note reveal">Olasılıksal AI ile belirlenimci blokzincir, bu döngüde güvenle buluşur.</p>
+    </div>
+  </section>
+
+  <!-- 6 · TRACTION -->
+  <section class="slide light">
+    <div class="inner">
+      <span class="eyebrow reveal">KANIT</span>
+      <h2 class="head wide reveal">Kırk sekiz saatte canlı.</h2>
+      <p class="lead reveal">Slayt değil, ürün konuşuyor. Specs yazıldı, Claude Code uyguladı, testler geçti, sistem ayağa kalktı.</p>
+      <div class="grid g4">
+        <div class="statcard reveal"><div class="tile soft" style="width:44px;height:44px;border-radius:12px"><svg viewBox="0 0 24 24"><path d="M13 3 4 14h6l-1 7 9-11h-6z"/></svg></div><div class="big">~200 ms</div><div class="lab">ortalama ödeme uzlaşma süresi</div></div>
+        <div class="statcard reveal"><div class="tile soft" style="width:44px;height:44px;border-radius:12px"><svg viewBox="0 0 24 24"><path d="M20 7 10 17l-5-5"/></svg></div><div class="big">%0</div><div class="lab">hata oranı, ilk bin test işleminde</div></div>
+        <div class="statcard reveal"><div class="tile soft" style="width:44px;height:44px;border-radius:12px"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10.5h3.5a1.5 1.5 0 0 1 0 3H10a1.5 1.5 0 0 0 0 3h3.5"/></svg></div><div class="big">3 stablecoin</div><div class="lab">bugün 5 ağda canlı, yol haritasında 11 ağ</div></div>
+        <div class="statcard reveal"><div class="tile soft" style="width:44px;height:44px;border-radius:12px"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg></div><div class="big">Canlı MVP</div><div class="lab">çalışan panel ve cüzdan akışı, önizleme</div></div>
+      </div>
+      <p class="foot-note reveal">Bugün Base, Arbitrum, Stellar, Algorand ve Circle Arc üzerinde çalışıyor.</p>
+    </div>
+  </section>
+
+  <!-- 7 · MARKET -->
+  <section class="slide light">
+    <div class="inner">
+      <span class="eyebrow reveal">PAZAR FIRSATI</span>
+      <h2 class="head wide reveal">Ajan ekonomisi trilyon dolarlık bir ray.</h2>
+      <div class="two" style="margin-top:30px">
+        <div class="reveal qwrap">
+          <svg viewBox="0 0 440 360" style="width:100%;max-width:440px;display:block;margin:0 auto">
+            <defs><filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+            <circle cx="220" cy="190" r="150" fill="rgba(107,78,230,.07)" stroke="rgba(107,78,230,.28)" stroke-width="1.4"/>
+            <circle cx="220" cy="218" r="100" fill="rgba(107,78,230,.16)" stroke="rgba(107,78,230,.45)" stroke-width="1.4"/>
+            <circle cx="220" cy="252" r="54" fill="#6B4EE6" filter="url(#glow)"/>
+            <text x="220" y="58" text-anchor="middle" font-family="Space Mono" font-size="11" letter-spacing="1.5" fill="#6B4EE6">TAM</text>
+            <text x="220" y="84" text-anchor="middle" font-family="Funnel Display" font-weight="800" font-size="22" fill="#16131F">8 T$</text>
+            <text x="220" y="140" text-anchor="middle" font-family="Space Mono" font-size="11" letter-spacing="1.5" fill="#5538C9">SAM</text>
+            <text x="220" y="164" text-anchor="middle" font-family="Funnel Display" font-weight="800" font-size="20" fill="#16131F">1,2 T$</text>
+            <text x="220" y="248" text-anchor="middle" font-family="Space Mono" font-size="10.5" letter-spacing="1.5" fill="#EDEBF4">SOM</text>
+            <text x="220" y="270" text-anchor="middle" font-family="Funnel Display" font-weight="800" font-size="18" fill="#fff">18 Mr$</text>
+          </svg>
+          <p class="foot-note" style="text-align:center;margin-top:8px">İllüstratif projeksiyon. TAM toplam ajan ödeme hacmi, SAM kimlik ve uzlaşma gereken ajandan ajana hacim, SOM üç yılda SDK ile erişilebilir hacim.</p>
+        </div>
+        <div class="reveal">
+          <div class="mini"><span class="mn">%25</span><span class="ml">2028'de e-ticaretin ajanlara kayması beklenen payı</span></div>
+          <div class="mini"><span class="mn">%50</span><span class="ml">2027'de ajandan ajana gerçekleşen internet trafiği</span></div>
+          <div class="mini"><span class="mn">Boş</span><span class="ml">Açık standartta kimlik ve ödemeyi birleştiren orta katman</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 · COMPETITION -->
+  <section class="slide light">
+    <div class="inner">
+      <span class="eyebrow reveal">REKABET</span>
+      <h2 class="head wide reveal">Kalabalık var, orta katman boş.</h2>
+      <div class="two" style="margin-top:24px">
+        <div class="reveal qwrap" style="aspect-ratio:1/.86">
+          <svg viewBox="0 0 460 400" style="width:100%;display:block">
+            <line x1="60" y1="200" x2="430" y2="200" stroke="#D9D4C7" stroke-width="1.2"/>
+            <line x1="230" y1="40" x2="230" y2="360" stroke="#D9D4C7" stroke-width="1.2"/>
+            <!-- dots: x small=human/closed, right=open agent-native -->
+            <g font-family="Funnel Display" font-size="12.5" font-weight="600" fill="#16131F">
+              <circle cx="120" cy="150" r="6" fill="#B8B3C7"/><text x="120" y="135" text-anchor="middle">Banka</text>
+              <circle cx="150" cy="110" r="6" fill="#B8B3C7"/><text x="150" y="96" text-anchor="middle">Visa · MC</text>
+              <circle cx="200" cy="245" r="6" fill="#B8B3C7"/><text x="200" y="268" text-anchor="middle">Stripe</text>
+              <circle cx="305" cy="280" r="6" fill="#B8B3C7"/><text x="318" y="300" text-anchor="middle">Saf Web3 cüzdanı</text>
+              <circle cx="300" cy="150" r="6" fill="#B8B3C7"/><text x="318" y="138" text-anchor="middle">Lava · Sapiom</text>
+              <circle cx="248" cy="180" r="6" fill="#B8B3C7"/><text x="262" y="172" text-anchor="start">Privy</text>
+              <circle cx="360" cy="92" r="9" fill="#6B4EE6"/><text x="360" y="76" text-anchor="middle" fill="#5538C9" font-weight="800">A-Identity</text>
+            </g>
+            <text x="436" y="196" text-anchor="end" font-family="Space Mono" font-size="10" fill="#8E8C9C">AÇIK STANDART</text>
+            <text x="64" y="196" text-anchor="start" font-family="Space Mono" font-size="10" fill="#8E8C9C">KAPALI</text>
+            <text x="236" y="50" text-anchor="start" font-family="Space Mono" font-size="10" fill="#8E8C9C">AJAN-NATIVE</text>
+            <text x="236" y="356" text-anchor="start" font-family="Space Mono" font-size="10" fill="#8E8C9C">İNSAN-MERKEZLİ</text>
+          </svg>
+        </div>
+        <div class="reveal">
+          <p class="lead" style="margin-top:0">Bankalar yavaş ve insan odaklı. Saf Web3 cüzdanları güçlü ama ajan için karmaşık. Stripe ve kart ağları ödeme tarafını açıyor, kimlik ve itibarı çözmüyor.</p>
+          <div class="card" style="margin-top:22px;background:#211D3F;border-color:#39326A;color:#fff">
+            <div class="ksub" style="color:#9A82FF">Bizim boşluk</div>
+            <div class="ktitle" style="color:#fff">Açık standart üstünde kimlik ve ödemeyi birleştiren tek agent-native katman.</div>
+            <div class="kbody" style="color:#C7C2E0">Rakipler ya kapalı ya da tek ayağı çözüyor. Biz ikisini açık raylarda birleştiriyoruz.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 · PLAYERS -->
+  <section class="slide light">
+    <div class="inner">
+      <span class="eyebrow reveal">OYUNCULAR</span>
+      <h2 class="head wide reveal">Sahadaki güçler, tek bakışta.</h2>
+      <div class="plist">
+        <div class="player reveal"><div class="pn">Stripe <span class="badge ally">Ortak adayı</span></div><div class="pb">Agentic Commerce Suite ve Shared Payment Tokens ile ajan ödemesini açıyor. Güçlü dağıtım, kimlik tarafı eksik.</div></div>
+        <div class="player reveal"><div class="pn">Visa · Mastercard <span class="badge ally">Ortak adayı</span></div><div class="pb">Agent Pay ve Intelligent Commerce ile kurumsal güven getiriyor. Hareketleri ağır, açık rayda zayıf.</div></div>
+        <div class="player reveal"><div class="pn">ERC-8004 <span class="badge base">Temelimiz</span></div><div class="pb">Google, Coinbase, MetaMask ve Ethereum Foundation destekli kimlik standardı. Pasaport ayağımız burada duruyor.</div></div>
+        <div class="player reveal"><div class="pn">Privy · Circle Wallets <span class="badge comp">Altyapı</span></div><div class="pb">Cüzdan karmaşasını kullanıcıdan ve ajandan gizliyor. Üstüne inşa ettiğimiz soyutlama katmanı.</div></div>
+        <div class="player reveal"><div class="pn">Lava · Sapiom <span class="badge rival">Komşu rakip</span></div><div class="pb">Agent-native ödeme ve kullanım bazlı faturalandırmada niş çözümler. Kimlik ve itibarı bütünleştirmiyor.</div></div>
+        <div class="player reveal"><div class="pn">World <span class="badge comp">Tamamlayıcı</span></div><div class="pb">İnsanı doğrulayan kimlik. Yeni vizyon insan ve ajan kimliğini konuşturmak, bizimle çakışmaz, tamamlar.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 · UNIQUE ADVANTAGE -->
+  <section class="slide light">
+    <div class="inner">
+      <span class="eyebrow reveal">FARK</span>
+      <h2 class="head wide reveal">Web2.5 köprüsü. Açık raylar, kapalı bahçeleri yener.</h2>
+      <div class="grid g3">
+        <div class="card reveal">
+          <div class="ksub">Açık standart</div>
+          <div class="ktitle">Retrofit edilemez</div>
+          <div class="kbody">ERC-8004 ve x402 doğrudan protokol seviyesinde. Rakipler bunu sonradan eklemekte zorlanır.</div>
+        </div>
+        <div class="card reveal">
+          <div class="ksub">Agent-native</div>
+          <div class="ktitle">MCP el sıkışması</div>
+          <div class="kbody">Ajan veri ve araca prizden takılır. Cüzdan karmaşası kullanıcıdan da ajandan da gizlidir.</div>
+        </div>
+        <div class="card reveal">
+          <div class="ksub">Naval kaldıracı</div>
+          <div class="ktitle">B2B2C dağıtım</div>
+          <div class="kbody">Bir SDK anlaşması milyon ajana ulaşır. Kod bir kez yazılır, marjinal maliyet sıfıra iner.</div>
+        </div>
+      </div>
+      <p class="foot-note reveal">Açık standart üstünde durduğumuz için entegrasyon kolay gelir, biz hızı ve güveni ekleriz.</p>
+    </div>
+  </section>
+
+  <!-- 11 · BUSINESS MODEL -->
+  <section class="slide light">
+    <div class="inner">
+      <span class="eyebrow reveal">İŞ MODELİ</span>
+      <h2 class="head wide reveal">İşlemden mikro komisyon, itibarla premium.</h2>
+      <div class="grid g3">
+        <div class="card reveal">
+          <div class="tile soft"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10.5h3.5a1.5 1.5 0 0 1 0 3H10a1.5 1.5 0 0 0 0 3h3.5"/></svg></div>
+          <div class="ktitle">İşlem komisyonu</div>
+          <div class="kbody">Her x402 ödemesinden uygulama katmanında mikro pay. Gas mantığı, ama bizim katmanımızda.</div>
+        </div>
+        <div class="card reveal">
+          <div class="tile soft"><svg viewBox="0 0 24 24"><path d="M12 4l2.3 4.7 5.2.8-3.8 3.7.9 5.2L12 16.8 7.4 18.4l.9-5.2L4.5 9.5l5.2-.8z"/></svg></div>
+          <div class="ktitle">Reputation premium</div>
+          <div class="kbody">Yüksek itibarlı ajanlara öncelikli erişim ve daha yüksek limit. Yinelenen abonelik geliri.</div>
+        </div>
+        <div class="card reveal">
+          <div class="tile soft"><svg viewBox="0 0 24 24"><path d="M12 3 4 7v10l8 4 8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg></div>
+          <div class="ktitle">Enterprise SDK</div>
+          <div class="kbody">Ödeme oyuncularına ve cüzdanlara agent-ready köprü. Kurumsal entegrasyon ücreti.</div>
+        </div>
+      </div>
+      <p class="foot-note reveal">Para insanların gönderdiğinden değil, botların birbirine ödediği işlem ve veri ücretlerinden gelir.</p>
+    </div>
+  </section>
+
+  <!-- 12 · TEAM -->
+  <section class="slide light">
+    <div class="inner">
+      <span class="eyebrow reveal">EKİP</span>
+      <h2 class="head wide reveal">Hacker. Hipster. Hustler.</h2>
+      <p class="lead reveal">Küçük, AI destekli takım. Birkaç kişiyle kurumsal ölçekte çıktı.</p>
+      <div class="grid g3">
+        <div class="card reveal">
+          <div class="tile"><svg viewBox="0 0 24 24"><path d="m8 9-3 3 3 3M16 9l3 3-3 3M13 7l-2 10"/></svg></div>
+          <div class="ktitle">Hacker</div>
+          <div class="kbody">Vibe coding ve Claude Code. Specs'ten deploy'a kadar describe and leave modunda inşa eder.</div>
+        </div>
+        <div class="card reveal">
+          <div class="tile"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="8.5" cy="10" r="1.1"/><circle cx="15.5" cy="10" r="1.1"/><circle cx="12" cy="15" r="1.1"/></svg></div>
+          <div class="ktitle">Hipster</div>
+          <div class="kbody">Agent Experience ve ürün. Karmaşık cüzdanı hem kullanıcıdan hem ajandan saklar.</div>
+        </div>
+        <div class="card reveal">
+          <div class="tile"><svg viewBox="0 0 24 24"><path d="M4 11v3l11 4V7zM15 9a3 3 0 0 1 0 6"/></svg></div>
+          <div class="ktitle">Hustler</div>
+          <div class="kbody">Dağıtım ve iş geliştirme. SDK'yı framework'lere gömer, ilk entegrasyon anlaşmalarını masaya koyar.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 13 · ASK -->
+  <section class="slide light">
+    <div class="inner">
+      <span class="eyebrow reveal">Ask</span>
+      <h2 class="head wide reveal">Tohum turunu açıyoruz.</h2>
+      <p class="lead reveal">Sermaye üç kilometre taşını açar, yakım hızını değil. Aradığımız ortak: agentic ekonomiye erken inanan yatırımcı.</p>
+      <div class="grid g3">
+        <div class="card reveal">
+          <div class="tile soft"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M6 8.4v3a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3M12 13.4v2.2"/></svg></div>
+          <div class="ktitle">Dağıtım</div>
+          <div class="kbody">SDK'yı popüler ajan framework'lerine göm. Hedef ilk entegrasyonlar ve aktif ajan sayısı.</div>
+        </div>
+        <div class="card reveal">
+          <div class="tile soft"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.5 2.2 2.5 13.8 0 16M12 4c-2.5 2.2-2.5 13.8 0 16"/></svg></div>
+          <div class="ktitle">Ağ ve para birimi</div>
+          <div class="kbody">Beş ağdan on bir ağa genişle, yeni stablecoin desteklerini ekle. Daha geniş erişim, daha düşük maliyet.</div>
+        </div>
+        <div class="card reveal">
+          <div class="tile soft"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.3 7.5 8 9 4.7-1.5 8-4.5 8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <div class="ktitle">Güven motoru</div>
+          <div class="kbody">İtibar puanı ve denetim katmanını kurumsal ölçeğe taşı. Belirlenimci güven, ölçeklenebilir altyapı.</div>
+        </div>
+      </div>
+      <p class="foot-note reveal">Tur tutarı ve zaman çizelgesi görüşmede paylaşılır.</p>
+    </div>
+  </section>
+
+  <!-- 14 · CLOSING -->
+  <section class="slide dark">
+    <div class="topbar">
+      <div class="logo">
+        <svg viewBox="0 0 100 100" aria-hidden="true"><g transform="translate(50,50)">
+          <rect x="-11" y="-36" width="22" height="72" rx="11" fill="#9A82FF" transform="rotate(0)"/>
+          <rect x="-11" y="-36" width="22" height="72" rx="11" fill="#9A82FF" transform="rotate(60)"/>
+          <rect x="-11" y="-36" width="22" height="72" rx="11" fill="#9A82FF" transform="rotate(120)"/>
+          <circle r="9" fill="#141029"/></g></svg>
+        <span class="name" style="color:#fff">A-Identity</span>
+      </div>
+      <span class="tag">HAZIR OLDUĞUNDA</span>
+    </div>
+    <div class="inner">
+      <span class="eyebrow reveal">KAPANIŞ</span>
+      <h1 class="display reveal" style="color:#fff;font-size:clamp(32px,4.6vw,58px)">Kahveler hazırsa, ilk ajan<br>ödemesini birlikte yapalım.</h1>
+      <div class="status">
+        <div class="scard reveal"><div class="sc-t"><span class="ck"><svg viewBox="0 0 24 24"><path d="M20 7 10 17l-5-5"/></svg></span>Specs hazır</div><div class="sc-b">Protokol mimarisi tanımlı.</div></div>
+        <div class="scard reveal"><div class="sc-t"><span class="ck"><svg viewBox="0 0 24 24"><path d="M20 7 10 17l-5-5"/></svg></span>MVP canlı</div><div class="sc-b">Panel ve cüzdan akışı çalışıyor.</div></div>
+        <div class="scard reveal"><div class="sc-t"><span class="ck"><svg viewBox="0 0 24 24"><path d="M20 7 10 17l-5-5"/></svg></span>Sırada ölçek</div><div class="sc-b">Dağıtım, çoklu ağ, tohum turu.</div></div>
+      </div>
+      <p class="lead reveal" style="margin-top:30px;font-style:italic">AI olasılıksal, blokzincir belirlenimci. Biz ikisini güvenle mühürlüyoruz: önce kimlik, sonra para.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="brandtag">A-IDENTITY · AGENTIC ECONOMY</div>
+<div class="nav">
+  <span class="count" id="cur">01</span><span>/</span><span id="tot">14</span>
+  <button class="navbtn" id="prev" aria-label="Önceki">&#8593;</button>
+  <button class="navbtn" id="next" aria-label="Sonraki">&#8595;</button>
+</div>
+
+<script>
+  const deck=document.getElementById('deck');
+  const slides=[...document.querySelectorAll('.slide')];
+  document.getElementById('tot').textContent=String(slides.length).padStart(2,'0');
+  const cur=document.getElementById('cur');
+  let idx=0;
+  const io=new IntersectionObserver((es)=>{es.forEach(e=>{
+    if(e.isIntersecting){
+      idx=slides.indexOf(e.target);
+      cur.textContent=String(idx+1).padStart(2,'0');
+      e.target.querySelectorAll('.reveal').forEach((el,i)=>setTimeout(()=>el.classList.add('in'),i*70));
+    }
+  })},{threshold:.55});
+  slides.forEach(s=>io.observe(s));
+  function go(n){idx=Math.max(0,Math.min(slides.length-1,n));slides[idx].scrollIntoView({behavior:'smooth'});}
+  document.getElementById('next').onclick=()=>go(idx+1);
+  document.getElementById('prev').onclick=()=>go(idx-1);
+  window.addEventListener('keydown',e=>{
+    if(['ArrowDown','ArrowRight','PageDown',' '].includes(e.key)){e.preventDefault();go(idx+1);}
+    if(['ArrowUp','ArrowLeft','PageUp'].includes(e.key)){e.preventDefault();go(idx-1);}
+  });
+</script>
+</body>
+</html>

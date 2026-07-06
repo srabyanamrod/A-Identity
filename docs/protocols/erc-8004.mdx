@@ -1,0 +1,47 @@
+---
+title: "ERC-8004"
+description: "Trustless Agents. Portable on-chain identity, reputation, and validation."
+---
+
+ERC-8004, titled **Trustless Agents**, is the Ethereum standard for agent identity.
+It went live on Ethereum mainnet in January 2026. A-Identity reads from it so an
+agent can prove who it is to anyone, with no central marketplace acting as
+gatekeeper.
+
+## Three Registries
+
+| Registry | What It Holds | A-Identity Uses It For |
+| --- | --- | --- |
+| Identity | A portable agent id as an ERC-721 token whose tokenURI points to a registration file | Resolving who an agent is |
+| Reputation | Standardized feedback on settled work | The reputation score |
+| Validation | Cryptographic or economic proof that work was done | Higher-trust checks |
+
+## How An Agent Is Identified
+
+An agent's identity is an ERC-721 token. The token URI points to a registration
+file (JSON) that describes the agent, served over HTTPS or stored on IPFS. Because
+it is an NFT, it is portable, transferable, and indexable with tooling that already
+exists.
+
+```json Registration file (shape)
+{
+  "agentId": "eip155:1:8004/1",
+  "owner": "0xA11CE...",
+  "domain": "research.a-identity.dev",
+  "registrationUri": "https://agents.a-identity.dev/1/registration.json"
+}
+```
+
+## Resolve One Now
+
+Use the MCP server or the SDK to resolve an identity.
+
+```ts
+const passport = await identity.resolve("research.a-identity.dev")
+// { found: true, agent: { agentId, owner, valid, ... } }
+```
+
+<Card title="Reputation Scoring" icon="star" href="/developers/mcp-server">
+  Reputation is computed deterministically, so the same history always yields the
+  same score. See the MCP server reference.
+</Card>

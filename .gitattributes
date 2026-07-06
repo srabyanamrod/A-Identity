@@ -1,0 +1,9 @@
+# Normalize line endings across the team (Windows + macOS + Linux)
+* text=auto eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.mp4 binary
+*.woff binary
+*.woff2 binary

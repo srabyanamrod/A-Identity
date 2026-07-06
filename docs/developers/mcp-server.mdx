@@ -1,0 +1,66 @@
+---
+title: "MCP Server"
+description: "The read-only A-Identity MCP server, tool by tool."
+---
+
+The server lives in the `mcp` package. It speaks MCP over stdio and over Streamable
+HTTP, and it is read only: no keys, no funds, no chain writes. Identity reads go
+through a swappable provider, mock today and on-chain once an RPC endpoint is set.
+
+## Run It
+
+```bash
+cd mcp && npm install && npm run build
+npm run start         # stdio
+npm run start:http    # HTTP, POST /mcp and GET /health
+npm run smoke         # exercise every tool over stdio
+```
+
+## Tools
+
+### resolve_agent
+
+Resolve an ERC-8004 identity.
+
+| Input | Type | Notes |
+| --- | --- | --- |
+| `query` | string | agent id, token id, owner address, or domain |
+
+```json Returns
+{ "found": true, "source": "mock", "agent": { "agentId": "eip155:1:8004/1", "owner": "0x...", "valid": true } }
+```
+
+### get_reputation
+
+Compute a deterministic reputation score.
+
+| Input | Type | Notes |
+| --- | --- | --- |
+| `agentId` | string | the agent id to score |
+
+The score (0 to 1000) is settlement plus validation plus tenure. The same history
+always produces the same score, so it can be anchored on-chain and recomputed by
+anyone.
+
+```json Returns
+{ "found": true, "reputation": { "score": 851, "breakdown": { "settlement": 544, "validation": 240, "tenure": 67 } } }
+```
+
+### list_capabilities
+
+Describe the protocol surface. No input.
+
+```json Returns
+{ "name": "A-Identity", "capabilities": { "identity": { "standard": "ERC-8004" }, "payments": { "standard": "x402" } } }
+```
+
+## Connect
+
+```bash Claude Code
+claude mcp add a-identity -- node ./mcp/dist/index.js
+```
+
+<Card title="Going On-Chain" icon="link" href="/protocols/erc-8004">
+  Set `A_IDENTITY_RPC_URL` and `ERC8004_IDENTITY_REGISTRY` to read real
+  identities. This step is human-reviewed before it ships.
+</Card>

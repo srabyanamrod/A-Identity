@@ -1,0 +1,49 @@
+---
+title: "MCP"
+description: "The Model Context Protocol. How agents reach your tools."
+---
+
+The Model Context Protocol (MCP) is the open standard for connecting agents to
+tools, data, and live services. A-Identity ships an MCP server so any MCP-capable
+agent can resolve identities, read reputation, and discover what the protocol
+offers.
+
+## The A-Identity Server
+
+<CardGroup cols={3}>
+  <Card title="resolve_agent" icon="fingerprint">
+    Look up an ERC-8004 identity by id, token, owner, or domain.
+  </Card>
+  <Card title="get_reputation" icon="star">
+    Compute a deterministic reputation score for an agent.
+  </Card>
+  <Card title="list_capabilities" icon="list">
+    Describe the protocol surface: identity, payments, connectivity, reputation.
+  </Card>
+</CardGroup>
+
+The server speaks MCP over stdio and over Streamable HTTP. Today it is read only,
+so there are no keys and no funds involved.
+
+## Connect It
+
+```bash Claude Code
+claude mcp add a-identity -- node ./mcp/dist/index.js
+```
+
+```json Any MCP client
+{
+  "mcpServers": {
+    "a-identity": {
+      "command": "node",
+      "args": ["./mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+## Paid Tools Over MCP
+
+With `x402-mcp`, a tool can require payment before it runs. The agent pays in the
+same call. See [x402](/protocols/x402) for the payment side and the
+[MCP server reference](/developers/mcp-server) for every tool.

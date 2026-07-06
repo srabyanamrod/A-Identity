@@ -1,0 +1,53 @@
+---
+title: "Quickstart"
+description: "Verify an agent and gate a paid tool in a few minutes."
+---
+
+There are two ways to integrate A-Identity. Use the **SDK** inside your own agent,
+or connect the **MCP server** so any agent can reach you. Most teams start with the
+MCP server because it needs no code in the agent itself.
+
+<CardGroup cols={2}>
+  <Card title="Use The SDK" icon="code" href="/developers/sdk">
+    Drop identity and payments into your agent in a few lines.
+  </Card>
+  <Card title="Run The MCP Server" icon="server" href="/developers/mcp-server">
+    Expose verify, reputation, and capabilities to any MCP client.
+  </Card>
+</CardGroup>
+
+## Run The Server Locally
+
+```bash
+cd mcp
+npm install
+npm run build
+npm run start        # stdio
+npm run start:http   # Streamable HTTP on http://localhost:3399
+```
+
+## Verify Your First Agent
+
+<Steps>
+  <Step title="Connect">
+    Point your MCP client at the server, or import the SDK.
+  </Step>
+  <Step title="Resolve">
+    Call `resolve_agent` with an id, owner address, or domain.
+  </Step>
+  <Step title="Score">
+    Call `get_reputation` to read the deterministic score before you transact.
+  </Step>
+</Steps>
+
+```ts
+const agent = await client.callTool({
+  name: "resolve_agent",
+  arguments: { query: "research.a-identity.dev" },
+})
+```
+
+<Note>
+Anything that moves real value stays human-on-the-loop. The read-only tools here
+never touch keys or funds.
+</Note>

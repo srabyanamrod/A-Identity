@@ -1,0 +1,286 @@
+#!/usr/bin/env node
+/**
+ * A-Identity MCP server - HTTP entry (Streamable HTTP + REST companion).
+ *
+ *   POST /mcp           to MCP Streamable HTTP (JSON-RPC 2.0, enableJsonResponse)
+ *   GET  /health        to liveness probe
+ *   GET  /api/agent     to REST: resolve agent (?q=<query>[&chain=<chain>])
+ *   GET  /api/reputation to  REST: get reputation (?id=<agentId>)
+ *   GET  /api/chains    to REST: list chains and agent counts
+ *   GET  /api/agents    to REST: list agents (?chain=<chain>)
+ */
+import http from 'node:http'
+import { URL } from 'node:url'
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
+import { buildServer } from './server.js'
+import { resolveAgent, getHistory, listAgents, CHAIN_CONFIG } from './data.js'
+import { computeReputation } from './reputation.js'
+import { getArcStatus } from './arc.js'
+import { getCircleStatus } from './circle.js'
+import { readArcContracts, registerAgentOnchain, createJobOnchain } from './arc-contracts.js'
+import {
+  approveInstruction,
+  assignWallet,
+  createAgent,
+  createInstruction,
+  createWallet,
+  executeInstruction,
+  followAgent,
+  getWalletBalance,
+  listInstructions,
+  listPlatformAgents,
+  marketplace,
+  type InstructionType,
+} from './platform.js'
+
+const PORT = Number(process.env.A_IDENTITY_HTTP_PORT ?? 3399)
+
+function readBody(req: http.IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    req.on('data', (c) => chunks.push(c as Buffer))
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8')
+      if (!raw) return resolve(undefined)
+      try { resolve(JSON.parse(raw)) } catch (e) { reject(e) }
+    })
+    req.on('error', reject)
+  })
+}
+
+function sendJson(res: http.ServerResponse, status: number, body: unknown) {
+  const payload = JSON.stringify(body, null, 2)
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) })
+  res.end(payload)
+}
+
+const server = http.createServer(async (req, res) => {
+  // Permissive CORS - Vite dev frontend calls this directly.
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, mcp-session-id, mcp-protocol-version')
+
+  if (req.method === 'OPTIONS') { res.writeHead(204).end(); return }
+
+  const url = new URL(req.url ?? '/', `http://localhost:${PORT}`)
+
+  // ── /health ──────────────────────────────────────────────────────────────────
+  if (req.method === 'GET' && url.pathname === '/health') {
+    sendJson(res, 200, {
+      status: 'ok',
+      server: 'a-identity-mcp',
+      version: '0.2.0',
+      transport: 'streamable-http',
+      chains: CHAIN_CONFIG.map((c) => ({ id: c.id, status: c.status })),
+    })
+    return
+  }
+
+  // ── REST /api/agent ──────────────────────────────────────────────────────────
+  if (req.method === 'GET' && url.pathname === '/api/agent') {
+    const q = url.searchParams.get('q') ?? ''
+    if (!q) { sendJson(res, 400, { error: 'Missing ?q= parameter' }); return }
+    const agent = resolveAgent(q)
+    if (!agent) { sendJson(res, 404, { found: false, query: q, reason: 'No matching ERC-8004 registration' }); return }
+    sendJson(res, 200, { found: true, source: 'mock', agent })
+    return
+  }
+
+  // ── REST /api/reputation ─────────────────────────────────────────────────────
+  if (req.method === 'GET' && url.pathname === '/api/reputation') {
+    const id = url.searchParams.get('id') ?? ''
+    if (!id) { sendJson(res, 400, { error: 'Missing ?id= parameter' }); return }
+    const history = getHistory(id)
+    if (!history) { sendJson(res, 404, { found: false, agentId: id, reason: 'Unknown agent' }); return }
+    sendJson(res, 200, { found: true, reputation: computeReputation(history) })
+    return
+  }
+
+  // ── REST /api/chains ──────────────────────────────────────────────────────────
+  if (req.method === 'GET' && url.pathname === '/api/chains') {
+    sendJson(res, 200, { chains: CHAIN_CONFIG })
+    return
+  }
+
+  // ── REST /api/arc (live Circle Arc testnet status) ────────────────────────────
+  if (req.method === 'GET' && url.pathname === '/api/arc') {
+    const status = await getArcStatus()
+    sendJson(res, status.online ? 200 : 503, status)
+    return
+  }
+
+  // ── REST /api/circle (Circle developer platform link state) ──────────────────
+  if (req.method === 'GET' && url.pathname === '/api/circle') {
+    sendJson(res, 200, await getCircleStatus())
+    return
+  }
+
+  // ── REST /api/arc/contracts (LIVE reads of real ERC-8004 + ERC-8183) ─────────
+  if (req.method === 'GET' && url.pathname === '/api/arc/contracts') {
+    const data = await readArcContracts()
+    sendJson(res, data.reachable ? 200 : 503, data)
+    return
+  }
+
+  // ── Real on-chain agent registration (ERC-8004). Env-gated; prepared w/o key ──
+  if (req.method === 'POST' && url.pathname === '/api/arc/register-onchain') {
+    const body = (await readBody(req).catch(() => null)) as { metadataUri?: string } | null
+    const uri = body?.metadataUri ?? 'ipfs://bafkreibdi6623n3xpf7ymk62ckb4bo75o3qemwkpfvp5i25j66itxvsoei'
+    sendJson(res, 200, await registerAgentOnchain(uri))
+    return
+  }
+
+  // ── Real ERC-8183 job (escrow). Env-gated; prepared w/o key ──────────────────
+  if (req.method === 'POST' && url.pathname === '/api/arc/create-job') {
+    const body = (await readBody(req).catch(() => null)) as
+      | { provider?: string; evaluator?: string; description?: string }
+      | null
+    if (!body?.provider || !body?.evaluator) { sendJson(res, 400, { error: 'provider and evaluator required' }); return }
+    sendJson(res, 200, await createJobOnchain({
+      provider: body.provider,
+      evaluator: body.evaluator,
+      description: body.description ?? 'A-Identity agentic-commerce job',
+    }))
+    return
+  }
+
+  // ── REST /api/agents ──────────────────────────────────────────────────────────
+  if (req.method === 'GET' && url.pathname === '/api/agents') {
+    const chain = url.searchParams.get('chain') ?? undefined
+    const agents = listAgents(chain)
+    sendJson(res, 200, {
+      total: agents.length,
+      chain: chain ?? 'all',
+      agents: agents.map((a) => ({
+        agentId: a.agentId,
+        domain: a.domain,
+        valid: a.valid,
+        chain: a.chain,
+        registeredAt: a.registeredAt,
+      })),
+    })
+    return
+  }
+
+  // ── Platform: wallets ─────────────────────────────────────────────────────────
+  if (req.method === 'POST' && url.pathname === '/api/wallets') {
+    sendJson(res, 201, await createWallet())
+    return
+  }
+  if (req.method === 'POST' && url.pathname === '/api/wallets/assign') {
+    const body = (await readBody(req).catch(() => null)) as { address?: string; agentId?: string } | null
+    if (!body?.address || !body?.agentId) { sendJson(res, 400, { error: 'address and agentId required' }); return }
+    const w = assignWallet(body.address, body.agentId)
+    sendJson(res, w ? 200 : 404, w ?? { error: 'wallet or agent not found' })
+    return
+  }
+  if (req.method === 'GET' && url.pathname === '/api/wallet-balance') {
+    const address = url.searchParams.get('address') ?? ''
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) { sendJson(res, 400, { error: 'valid ?address= required' }); return }
+    sendJson(res, 200, await getWalletBalance(address))
+    return
+  }
+
+  // ── Platform: agents ──────────────────────────────────────────────────────────
+  if (req.method === 'POST' && url.pathname === '/api/agents') {
+    const body = (await readBody(req).catch(() => null)) as {
+      name?: string; description?: string; category?: string
+      capabilities?: string[]; permissions?: Record<string, unknown>; walletAddress?: string
+    } | null
+    if (!body?.name) { sendJson(res, 400, { error: 'name required' }); return }
+    const agent = createAgent({
+      name: body.name,
+      description: body.description ?? '',
+      category: body.category ?? 'Other',
+      capabilities: Array.isArray(body.capabilities) ? body.capabilities : [],
+      permissions: (body.permissions ?? {}) as never,
+      walletAddress: body.walletAddress,
+    })
+    sendJson(res, 201, { agent })
+    return
+  }
+  if (req.method === 'GET' && url.pathname === '/api/platform-agents') {
+    sendJson(res, 200, { agents: listPlatformAgents() })
+    return
+  }
+
+  // ── Platform: instructions (pay / purchase / rental / batch) ─────────────────
+  if (req.method === 'POST' && url.pathname === '/api/instructions') {
+    const body = (await readBody(req).catch(() => null)) as {
+      agentId?: string; type?: InstructionType; amountUsd?: number
+      count?: number; payee?: string; memo?: string
+    } | null
+    if (!body?.agentId || !body?.type || typeof body.amountUsd !== 'number' || !body?.payee) {
+      sendJson(res, 400, { error: 'agentId, type, amountUsd, payee required' }); return
+    }
+    const ix = createInstruction(body as never)
+    sendJson(res, 'error' in ix ? 404 : 201, ix)
+    return
+  }
+  if (req.method === 'GET' && url.pathname === '/api/instructions') {
+    sendJson(res, 200, { instructions: listInstructions(url.searchParams.get('agentId') ?? undefined) })
+    return
+  }
+  if (req.method === 'POST' && url.pathname === '/api/instructions/approve') {
+    const body = (await readBody(req).catch(() => null)) as { id?: string } | null
+    if (!body?.id) { sendJson(res, 400, { error: 'id required' }); return }
+    const ix = approveInstruction(body.id)
+    sendJson(res, 'error' in ix ? 400 : 200, ix)
+    return
+  }
+  if (req.method === 'POST' && url.pathname === '/api/instructions/execute') {
+    const body = (await readBody(req).catch(() => null)) as { id?: string } | null
+    if (!body?.id) { sendJson(res, 400, { error: 'id required' }); return }
+    const ix = executeInstruction(body.id)
+    sendJson(res, 'error' in ix ? 400 : 200, ix)
+    return
+  }
+
+  // ── Platform: marketplace (Agent House) ──────────────────────────────────────
+  if (req.method === 'GET' && url.pathname === '/api/marketplace') {
+    sendJson(res, 200, marketplace(url.searchParams.get('viewer') ?? undefined))
+    return
+  }
+  if (req.method === 'POST' && url.pathname === '/api/follow') {
+    const body = (await readBody(req).catch(() => null)) as { agentId?: string; follower?: string } | null
+    if (!body?.agentId || !body?.follower) { sendJson(res, 400, { error: 'agentId and follower required' }); return }
+    const r = followAgent(body.agentId, body.follower)
+    sendJson(res, 'error' in r ? 404 : 200, r)
+    return
+  }
+
+  // ── POST /mcp (MCP Streamable HTTP) ──────────────────────────────────────────
+  if (req.method === 'POST' && url.pathname === '/mcp') {
+    try {
+      const body = await readBody(req)
+      const mcp = buildServer()
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
+      })
+      res.on('close', () => { transport.close(); void mcp.close() })
+      await mcp.connect(transport)
+      await transport.handleRequest(req, res, body)
+    } catch (err) {
+      console.error('[a-identity-mcp] request error:', err)
+      if (!res.headersSent) {
+        sendJson(res, 500, { jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' }, id: null })
+      }
+    }
+    return
+  }
+
+  sendJson(res, 404, { error: 'not found' })
+})
+
+server.listen(PORT, () => {
+  console.error(`[a-identity-mcp] HTTP on http://localhost:${PORT}`)
+  console.error(`  POST /mcp               MCP JSON-RPC (tools/call, etc.)`)
+  console.error(`  GET  /health            liveness probe`)
+  console.error(`  GET  /api/agent?q=...   resolve agent by id/address/domain`)
+  console.error(`  GET  /api/reputation?id=... reputation score`)
+  console.error(`  GET  /api/chains        supported chains`)
+  console.error(`  GET  /api/arc           live Circle Arc testnet status`)
+  console.error(`  GET  /api/circle        Circle platform link (wallets, gateway, USDC)`)
+  console.error(`  GET  /api/agents        list agents (?chain=base|arbitrum|ethereum)`)
+})

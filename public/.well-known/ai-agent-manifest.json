@@ -1,0 +1,90 @@
+{
+  "$schema": "https://a-identity.dev/schemas/agent-manifest-0.2.json",
+  "name": "A-Identity",
+  "description": "The passport and wallet for the agentic economy. On-chain agent identity (ERC-8004), x402 micro-payments, MCP-native tool access, and multi-chain settlement (Arc, Base, Arbitrum, Stellar, Algorand).",
+  "version": "0.2.0",
+  "audience": ["ai-agent", "developer"],
+  "status": "preview",
+  "capabilities": {
+    "identity": {
+      "standard": "ERC-8004",
+      "registries": ["identity", "reputation", "validation"],
+      "chains": [
+        { "id": "ethereum", "chainId": 1, "identity": "ERC-8004", "erc8004Native": true, "status": "preview" },
+        { "id": "base", "chainId": 8453, "identity": "ERC-8004", "erc8004Native": true, "status": "preview" },
+        { "id": "arbitrum", "chainId": 42161, "identity": "ERC-8004", "erc8004Native": true, "status": "preview" },
+        { "id": "stellar", "caip2": "stellar:pubnet", "identity": "Soroban registry + SEP-10", "erc8004Native": false, "note": "ERC-8004 passport bridged from EVM", "status": "planned" },
+        { "id": "algorand", "caip2": "algorand:mainnet", "identity": "did:algo + ARC registry", "erc8004Native": false, "note": "ERC-8004 passport bridged from EVM", "status": "planned" }
+      ],
+      "multiChain": true
+    },
+    "payments": {
+      "standard": "x402",
+      "settlement": "USDC",
+      "also_supported": ["USDT", "PYUSD", "EURC"],
+      "rails": [
+        { "id": "arc", "name": "Circle Arc (Testnet)", "chainId": 5042002, "role": "primary: gas in USDC, App Kit unified balance, Gateway", "x402": true, "unified_balance": true, "status": "preview" },
+        { "id": "base", "name": "Base", "chainId": 8453, "role": "EVM fallback", "x402": true, "status": "preview" },
+        { "id": "arbitrum", "name": "Arbitrum One", "chainId": 42161, "role": "DeFi gateway", "x402": true, "status": "preview" },
+        { "id": "stellar", "caip2": "stellar:pubnet", "role": "USDC + EURC native (Circle), Soroban", "x402": true, "status": "planned" },
+        { "id": "algorand", "caip2": "algorand:mainnet", "role": "USDC native (Circle), instant finality", "x402": true, "status": "planned" }
+      ],
+      "wallets": "circle-agent-wallets",
+      "status": "planned"
+    },
+    "connectivity": {
+      "standard": "model-context-protocol",
+      "transport": ["stdio", "http"],
+      "paid_tools": "x402-mcp",
+      "status": "preview"
+    },
+    "reputation": {
+      "model": "deterministic",
+      "range": [0, 1000],
+      "formula": "settlement(0-600) + validation(0-240) + tenure(0-160)",
+      "source": "settled x402 actions and ERC-8004 feedback",
+      "cross_chain": true,
+      "status": "preview"
+    }
+  },
+  "tools": [
+    { "name": "resolve_agent", "kind": "read", "input": "query (CAIP-10 id, token id, address, domain)", "returns": "ERC-8004 identity (all chains)" },
+    { "name": "get_reputation", "kind": "read", "input": "agentId (CAIP-10)", "returns": "deterministic score 0-1000 + breakdown" },
+    { "name": "list_agents", "kind": "read", "input": "chain? (ethereum|base|arbitrum)", "returns": "registered agents on that chain or all" },
+    { "name": "get_chain_status", "kind": "read", "input": "none", "returns": "Arc / Base / Arbitrum status and agent counts" },
+    { "name": "list_capabilities", "kind": "read", "input": "none", "returns": "full protocol manifest" }
+  ],
+  "interaction": {
+    "agent_to_agent": {
+      "flow": ["resolve_agent", "get_reputation", "negotiate", "pay_x402", "deliver"],
+      "trust": "Both agents verify each other via ERC-8004 before value moves. Reputation gate (default: 300+).",
+      "settlement": "x402 in stablecoins on Arc (primary) or Base/Arbitrum/Stellar/Algorand (fallback). No shared accounts or API keys.",
+      "chains_supported": ["arc", "base", "arbitrum", "stellar", "algorand"]
+    },
+    "agent_to_human": {
+      "flow": ["agent_proposes", "human_reviews", "human_approves", "settle"],
+      "trust": "An agent presents its passport; the human sets limits and grants scoped permission.",
+      "constraint": "Payments above the auto-approve threshold pause for explicit human approval."
+    },
+    "permissions": {
+      "model": "policy-scoped",
+      "controls": ["daily_cap", "payee_allowlist", "auto_approve_under", "per_tx_cap", "reputation_gate", "freeze"],
+      "default": "deny",
+      "require_2of2": false
+    }
+  },
+  "endpoints": {
+    "mcp": "https://a-identity.dev/mcp",
+    "rest": {
+      "agent": "https://a-identity.dev/api/agent?q={query}",
+      "reputation": "https://a-identity.dev/api/reputation?id={agentId}",
+      "chains": "https://a-identity.dev/api/chains",
+      "agents": "https://a-identity.dev/api/agents?chain={chain}"
+    },
+    "manifest": "/.well-known/ai-agent-manifest.json",
+    "docs": "https://docs.a-identity.dev",
+    "sdk": "https://docs.a-identity.dev/developers/sdk"
+  },
+  "contact": "agents@a-identity.dev",
+  "human_oversight": "Actions that hold a key, deploy a contract, or move value require explicit human approval. A person stays in the tower; agents act inside the limits and policies the human sets. No autonomous key custody or mainnet contract deployment."
+}

@@ -1,0 +1,51 @@
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import ScrollToTop from './components/ScrollToTop'
+import Landing from './routes/Landing'
+import Login from './routes/Login'
+import Signup from './routes/Signup'
+import Manifesto from './routes/Manifesto'
+import Brand from './routes/Brand'
+import Contact from './routes/Contact'
+import Blog from './routes/Blog'
+import BlogPost from './routes/BlogPost'
+import UseCase from './routes/UseCase'
+import ProtectedRoute from './routes/ProtectedRoute'
+import AppLayout from './routes/app/AppLayout'
+import Dashboard from './routes/app/Dashboard'
+import AgentId from './routes/app/AgentId'
+import Wallet from './routes/app/Wallet'
+import Settlements from './routes/app/Settlements'
+import Permissions from './routes/app/Permissions'
+import Marketplace from './routes/app/Marketplace'
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <ScrollToTop />
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/manifesto" element={<Manifesto />} />
+        <Route path="/brand" element={<Brand />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/blog" element={<Blog />} />
+        <Route path="/blog/:slug" element={<BlogPost />} />
+        <Route path="/use-cases/:slug" element={<UseCase />} />
+
+        <Route element={<ProtectedRoute />}>
+          <Route path="/app" element={<AppLayout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="agent-id" element={<AgentId />} />
+            <Route path="wallet" element={<Wallet />} />
+            <Route path="settlements" element={<Settlements />} />
+            <Route path="permissions" element={<Permissions />} />
+            <Route path="marketplace" element={<Marketplace />} />
+          </Route>
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  )
+}

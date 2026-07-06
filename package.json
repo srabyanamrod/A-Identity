@@ -1,0 +1,34 @@
+{
+  "name": "a-identity",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A-Identity, the passport and wallet for the agentic economy (UI and protocol shell)",
+  "scripts": {
+    "dev": "vite",
+    "dev:all": "concurrently --names \"UI,MCP,DOCS\" --prefix-colors \"cyan,magenta,yellow\" \"npm run dev\" \"npm run mcp:http\" \"npm run docs\"",
+    "docs": "cd docs && npx --yes mint dev --port 3000",
+    "mcp:build": "npm run build --prefix mcp",
+    "mcp:http": "npm run build --prefix mcp && node mcp/dist/http.js",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "framer-motion": "^11.18.2",
+    "lucide-react": "^0.469.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.18.0",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^10.0.3",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}

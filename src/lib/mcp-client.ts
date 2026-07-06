@@ -1,0 +1,133 @@
+/**
+ * Thin client for the A-Identity MCP HTTP server (POST /mcp, JSON-RPC 2.0).
+ * The server runs at localhost:3399 by default; set VITE_MCP_URL to override.
+ * enableJsonResponse is true on the server so responses are plain JSON, not SSE.
+ */
+
+const BASE = (import.meta.env.VITE_MCP_URL as string | undefined) ?? 'http://localhost:3399'
+
+let _reqId = 1
+
+async function callTool<T>(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${BASE}/mcp`, {
+      method: 'POST',
+      // Streamable HTTP requires both accept types; enableJsonResponse=true returns plain JSON.
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: _reqId++,
+        method: 'tools/call',
+        params: { name, arguments: args },
+      }),
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    const json = (await res.json()) as {
+      result?: { content?: { type: string; text: string }[] }
+      error?: { message?: string }
+    }
+    if (json.error) return { ok: false, error: json.error.message ?? 'MCP error' }
+    const text = json.result?.content?.[0]?.text
+    if (!text) return { ok: false, error: 'Empty response' }
+    return { ok: true, data: JSON.parse(text) as T }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { ok: false, error: msg.includes('fetch') ? 'MCP server offline' : msg }
+  }
+}
+
+// ── types ─────────────────────────────────────────────────────────────────────
+
+export type AgentIdentity = {
+  agentId: string
+  tokenId: number
+  owner: string
+  domain: string
+  valid: boolean
+  registeredAt: string
+  registrationUri?: string
+  chain?: string
+}
+
+export type Reputation = {
+  score: number
+  breakdown: { settlement: number; validation: number; tenure: number }
+  agentId: string
+  computedAt: string
+}
+
+export type ChainStatus = {
+  id: string
+  name: string
+  shortName: string
+  chainId: number | null
+  evmCompatible: boolean
+  role: string
+  status: string
+  agentCount: number
+}
+
+// ── API surface ───────────────────────────────────────────────────────────────
+
+export async function resolveAgent(
+  query: string,
+): Promise<{ ok: true; data: { found: boolean; source?: string; agent?: AgentIdentity } } | { ok: false; error: string }> {
+  return callTool('resolve_agent', { query })
+}
+
+export async function getReputation(
+  agentId: string,
+): Promise<{ ok: true; data: { found: boolean; reputation?: Reputation } } | { ok: false; error: string }> {
+  return callTool('get_reputation', { agentId })
+}
+
+export async function getChainStatus(): Promise<
+  { ok: true; data: { chains: ChainStatus[] } } | { ok: false; error: string }
+> {
+  return callTool('get_chain_status', {})
+}
+
+export type ArcStatus = {
+  chain: string
+  online: boolean
+  chainId: number | null
+  blockNumber: string | null
+  rpc: string
+  explorer: string
+  faucet: string
+  gasToken: string
+  nativeDecimals: number
+  checkedAt: string
+  note?: string
+}
+
+/** Live Circle Arc testnet status via the MCP REST companion. */
+export async function getArcStatus(): Promise<
+  { ok: true; data: ArcStatus } | { ok: false; error: string }
+> {
+  try {
+    const res = await fetch(`${BASE}/api/arc`, { signal: AbortSignal.timeout(8000) })
+    // The endpoint returns 200 when online, 503 when the RPC is unreachable; both carry the body.
+    const data = (await res.json()) as ArcStatus
+    return { ok: true, data }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { ok: false, error: msg.includes('fetch') ? 'MCP server offline' : msg }
+  }
+}
+
+export async function checkHealth(): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(3000) })
+    return res.ok
+  } catch {
+    return false
+  }
+}

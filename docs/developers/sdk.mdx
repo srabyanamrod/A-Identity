@@ -1,0 +1,57 @@
+---
+title: "SDK"
+description: "Identity and payments inside your own agent."
+---
+
+The SDK is for teams that want A-Identity inside their own code, so their project
+can verify agents and charge for actions without running a separate service. It is
+the same surface as the MCP server, exposed as plain functions.
+
+<Note>
+The SDK is in preview. The shapes below are stable targets. Until the package
+ships, the [MCP server](/developers/mcp-server) gives you the same calls today.
+</Note>
+
+## Install
+
+```bash
+npm install @a-identity/sdk
+```
+
+## Verify And Score
+
+```ts
+import { AIdentity } from "@a-identity/sdk"
+
+const ai = new AIdentity()
+
+const passport = await ai.resolve("research.a-identity.dev")
+if (passport.found && passport.agent.valid) {
+  const rep = await ai.reputation(passport.agent.agentId)
+  // gate on rep.score before you transact
+}
+```
+
+## Charge For An Action
+
+A paid tool requires payment before it runs. The caller pays in the same request.
+
+```ts
+import { paidTool } from "x402-mcp"
+
+server.addTool(
+  paidTool({
+    name: "verify_agent",
+    price: "$0.001",     // settled in USDC, no API keys
+    network: "arc",      // Circle Agent Wallets and Nanopayments
+    handler: async ({ agentId }) => {
+      const passport = await ai.resolve(agentId)
+      return { verified: passport.found, score: passport.agent?.reputation }
+    },
+  }),
+)
+```
+
+<Card title="Payment Details" icon="coins" href="/protocols/x402">
+  How x402 settlement works, and which stablecoins are supported.
+</Card>

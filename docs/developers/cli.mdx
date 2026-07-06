@@ -1,0 +1,54 @@
+---
+title: "CLI"
+description: "Resolve agents, check reputation, and inspect chains from your terminal."
+---
+
+The A-Identity CLI is a thin wrapper over the same read-only endpoints the SDK and
+MCP server use. It is handy for scripts, CI checks, and quick lookups. Like everything
+read-only, it needs no keys and moves no funds.
+
+<Note>
+The CLI is in preview. Today it calls the local MCP HTTP server
+(`npm run start:http` in the `mcp` package). Hosted endpoints arrive with the public
+launch.
+</Note>
+
+## Install
+
+```bash
+npm install -g @a-identity/cli
+```
+
+## Commands
+
+```bash
+# Resolve an identity by id, address, or domain
+a-identity resolve eip155:1:8004/1
+a-identity resolve research.a-identity.dev
+
+# Score an agent
+a-identity reputation eip155:1:8004/1
+
+# List agents on a chain
+a-identity agents --chain base
+
+# Show supported chains and their status
+a-identity chains
+```
+
+## Output
+
+Every command prints JSON by default, so it pipes cleanly into `jq` or a script:
+
+```bash
+a-identity reputation eip155:1:8004/1 | jq '.reputation.score'
+```
+
+Point the CLI at a different server with `A_IDENTITY_MCP_URL`:
+
+```bash
+A_IDENTITY_MCP_URL=http://localhost:3399 a-identity chains
+```
+
+Anything that moves value still goes through the app, where a human approves it. The
+CLI stays on the read side of that line.

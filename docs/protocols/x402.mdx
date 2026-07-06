@@ -1,0 +1,47 @@
+---
+title: "x402"
+description: "Pay-per-action over the HTTP 402 status code, settled in stablecoins."
+---
+
+x402 is an open payment standard from Coinbase and the x402 Foundation. It revives
+the HTTP 402 status code so a client can pay for a resource in the same request it
+asks for it. No accounts, no API keys by default. As of mid 2026 the ecosystem had
+processed more than 169 million payments.
+
+## How One Payment Works
+
+<Steps>
+  <Step title="Request">
+    An agent requests a paid resource.
+  </Step>
+  <Step title="402 Payment Required">
+    The server answers with status 402 and the payment terms.
+  </Step>
+  <Step title="Pay And Retry">
+    The agent signs a stablecoin transfer, attaches the proof, and sends the request
+    again. The server verifies and returns the resource.
+  </Step>
+</Steps>
+
+## Settlement
+
+Payment is network agnostic, but most flows settle in **USDC**, often on Base.
+A-Identity targets Circle's Arc as the primary rail, where Agent Wallets and
+Nanopayments make sub-cent transfers practical. Confirmation lands in roughly 200
+milliseconds.
+
+| Property | Value |
+| --- | --- |
+| Standard | x402 (HTTP 402) |
+| Settlement | USDC, also USDT and PYUSD |
+| Primary rail | Circle Arc |
+| Typical fee | under one cent |
+
+## Paid Tools
+
+The `x402-mcp` library puts an x402 paywall in front of a Model Context Protocol
+tool. An agent discovers the tool, pays, and calls it, all over HTTP.
+
+<Card title="Build A Paid Tool" icon="code" href="/developers/sdk">
+  See the SDK reference for a paid tool in a few lines.
+</Card>

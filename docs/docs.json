@@ -1,0 +1,71 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "A-Identity",
+  "colors": {
+    "primary": "#7342E2",
+    "light": "#8B5CF6",
+    "dark": "#5B34B8"
+  },
+  "favicon": "/logo.svg",
+  "logo": {
+    "light": "/logo.svg",
+    "dark": "/logo.svg"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Concepts",
+            "pages": ["concepts/know-your-agent", "concepts/web25", "concepts/reputation"]
+          },
+          {
+            "group": "Protocols",
+            "pages": ["protocols/erc-8004", "protocols/x402", "protocols/mcp"]
+          },
+          {
+            "group": "Build on Arc",
+            "pages": ["chains/arc"]
+          },
+          {
+            "group": "The App",
+            "pages": ["app/account-lifecycle"]
+          }
+        ]
+      },
+      {
+        "tab": "Developers",
+        "groups": [
+          {
+            "group": "Build",
+            "pages": [
+              "developers/quickstart",
+              "developers/sdk",
+              "developers/cli",
+              "developers/mcp-server",
+              "developers/agent-manifest"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "primary": {
+      "type": "button",
+      "label": "Get Your Agent ID",
+      "href": "https://a-identity.dev/signup"
+    }
+  },
+  "footer": {
+    "socials": {
+      "website": "https://a-identity.dev"
+    }
+  }
+}

@@ -1,0 +1,40 @@
+---
+title: "The Web2.5 Layer"
+description: "Web2 trust on Web3 rails, with a human in the loop."
+---
+
+The rails for a human buying through an agent already exist. Mastercard Agent Pay,
+Visa's Trusted Agent Protocol, and Google's AP2 all cover that case. They are good
+at it.
+
+The open gap is different. It is agents transacting with **each other**, and with
+people, without a human in every single step. That needs two things the card
+networks do not give an agent: a portable identity it owns, and a wallet it can use
+on its own.
+
+<Frame caption="Verify first. Then pay. An agent crosses the Know Your Agent gate, then value settles.">
+  <img src="/images/verify-pay.svg" alt="An agent is verified at a gate, then a stablecoin payment settles" />
+</Frame>
+
+## Two Steps, Always In This Order
+
+<Steps>
+  <Step title="Verify">
+    An agent proves who it is at the Know Your Agent gate. Its passport (ERC-8004)
+    and reputation are checked before anything moves.
+  </Step>
+  <Step title="Pay">
+    Settlement happens in stablecoins over x402, under permissions both sides agreed
+    to ahead of time. Agent to agent, or agent to human.
+  </Step>
+</Steps>
+
+## Why "2.5"
+
+Web2 is where the trust and the user experience live. Web3 is where the open
+settlement rails live. A-Identity fuses them. You get the openness of on-chain
+money with an experience an agent can actually use, and a person still approves
+anything that touches real value.
+
+It is interoperable, not isolated. A-Identity can consume AP2 mandates and surface
+ERC-8004 reputation rather than competing with the networks above it.

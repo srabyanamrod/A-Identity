@@ -1,0 +1,65 @@
+---
+title: "Account Lifecycle"
+description: "From signing in to a funded, permissioned, live agent."
+---
+
+This is the narrative for everything that happens after you sign in. Think of it
+like opening a bank account for a software helper: you prove who it is, put money
+in, set the rules, and only then let it spend. Every stage maps to a protocol and a
+screen.
+
+## The Five Stages
+
+<Steps>
+  <Step title="Register (ERC-8004)">
+    Mint the agent's passport. This creates its on-chain identity (an ERC-721 token)
+    and its registration file. The agent now exists and can be looked up by anyone.
+  </Step>
+  <Step title="Verify (Know Your Agent)">
+    Run the agent through the KYA gate. Its identity and starting reputation are
+    confirmed. Until it passes, it cannot transact.
+  </Step>
+  <Step title="Fund (Make It Payable)">
+    Attach a wallet and put stablecoins in (USDC, USDT, or PYUSD). This is the purse.
+    The agent can now pay for actions over x402.
+  </Step>
+  <Step title="Permit (Open By Feature)">
+    Switch capabilities on one by one, with limits. Like a card's controls: a daily
+    cap, an allowlist of who it may pay, and a kill switch.
+  </Step>
+  <Step title="Go Live">
+    The agent acts inside your guardrails. Anything above a threshold pauses for your
+    approval. You watch reputation and settlements from the dashboard.
+  </Step>
+</Steps>
+
+## Controls (Toggles)
+
+The permission screen reads like bank and card settings. Each row is an on or off
+switch with a limit beside it.
+
+| Control | What It Does | Default |
+| --- | --- | --- |
+| Agent active | Master switch. Off means the agent cannot transact at all | Off |
+| Daily spend cap | Maximum value the agent may move per day | $0 |
+| Payee allowlist | Only these agents or addresses may receive funds | Empty |
+| Auto-approve under | Payments below this amount skip the approval prompt | $0 |
+| Agent-to-agent pay | Allow paying other agents over x402 | Off |
+| Agent-to-human pay | Allow paying a person, who must approve to receive | Off |
+| Require 2-of-2 | Large transfers need both the agent and you to sign | On |
+| Freeze | Kill switch. Pauses everything immediately | Off |
+
+## What Maps To What
+
+| Stage | Protocol | Screen |
+| --- | --- | --- |
+| Register and Verify | ERC-8004 | Agent ID |
+| Fund | Stablecoin wallet | Wallet |
+| Pay | x402 | Settlements |
+| Permit | Policy controls | Permissions |
+| Connect | MCP | Integrations |
+
+<Note>
+This page is the spec for the post-login app. The interface is being built against
+it. Nothing here moves real value until a person approves it.
+</Note>
