@@ -326,6 +326,9 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
   const [submitBusy, setSubmitBusy] = useState(false)
   const [done, setDone] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [anchorBusy, setAnchorBusy] = useState(false)
+  const [anchored, setAnchored] = useState<{ onchainTx?: string; onchainExplorer?: string; onchainAgentId?: string } | null>(null)
+  const [anchorNote, setAnchorNote] = useState<string | null>(null)
 
   const input =
     'w-full rounded-xl border border-ink/10 bg-cream/40 px-3 py-2.5 text-sm outline-none transition-colors focus:border-accent'
@@ -380,6 +383,32 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
     }
   }
 
+  // Deliberate, human-triggered on-chain anchor: broadcasts a real ERC-8004
+  // registration on Arc and shows the tx. Env-gated behind ARC_SIGNER_KEY server-side.
+  const anchorOnchain = async () => {
+    if (!done) return
+    setAnchorBusy(true)
+    setAnchorNote(null)
+    try {
+      const res = await fetch(`${MCP_BASE}/api/agents/anchor`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: done }),
+      })
+      const data = (await res.json()) as {
+        agent?: { onchainTx?: string; onchainExplorer?: string; onchainAgentId?: string }
+        result?: { executed?: boolean; reason?: string }
+        error?: string
+      }
+      if (data.result?.executed && data.agent) setAnchored(data.agent)
+      else setAnchorNote(data.result?.reason ?? data.error ?? 'Could not broadcast. Set a funded ARC_SIGNER_KEY on the server.')
+    } catch {
+      setAnchorNote('Anchoring needs the MCP server running with a funded ARC_SIGNER_KEY.')
+    } finally {
+      setAnchorBusy(false)
+    }
+  }
+
   if (done) {
     return (
       <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-6">
@@ -388,9 +417,41 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
         </div>
         <ul className="mt-3 flex flex-col gap-1.5 text-sm text-ink/70">
           <li>KYA passed with the permissions you set.</li>
-          <li>Arc testnet anchor is queued; a human approves the on-chain write.</li>
           {wallet && <li>Wallet {wallet.address.slice(0, 10)}... is assigned to it.</li>}
+          {!anchored && <li>On-chain anchor is queued. Anchor it on Arc to mint a real ERC-8004 identity.</li>}
         </ul>
+
+        {/* On-chain anchor: real ERC-8004 registration on Arc, human-triggered */}
+        {anchored ? (
+          <div className="mt-4 rounded-xl border border-[#2775CA]/25 bg-[#2775CA]/[0.05] p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#2775CA]">
+              <BadgeCheck size={16} /> Anchored on Arc — ERC-8004 id #{anchored.onchainAgentId ?? '?'}
+            </div>
+            {anchored.onchainExplorer && (
+              <a
+                href={anchored.onchainExplorer}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-block break-all text-xs font-semibold text-[#2775CA] hover:underline"
+              >
+                View transaction on arcscan
+              </a>
+            )}
+          </div>
+        ) : (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={anchorOnchain}
+              disabled={anchorBusy}
+              className="rounded-full border border-[#2775CA]/30 px-4 py-2 text-sm font-semibold text-[#2775CA] transition-colors hover:bg-[#2775CA]/5 disabled:opacity-50"
+            >
+              {anchorBusy ? 'Anchoring on Arc...' : 'Anchor on Arc (register on-chain)'}
+            </button>
+            {anchorNote && <p className="mt-2 text-xs text-amber-700">{anchorNote}</p>}
+          </div>
+        )}
+
         <div className="mt-4 flex gap-3">
           <a
             href="/app/marketplace"

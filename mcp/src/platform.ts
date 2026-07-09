@@ -19,6 +19,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ARC_TESTNET } from './arc.js'
+import { registerAgentOnchain } from './arc-contracts.js'
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,11 @@ export type PlatformAgent = {
   chain: 'arc'
   chainId: number
   kya: 'verified'
-  onchain: 'queued'
+  onchain: 'queued' | 'registered'
+  /** Set once the ERC-8004 identity is broadcast on Arc (real tx). */
+  onchainTx?: string
+  onchainExplorer?: string
+  onchainAgentId?: string
   passport: {
     standard: 'ERC-8004'
     registrationJson: Record<string, unknown>
@@ -254,6 +259,45 @@ export function listPlatformAgents(): PlatformAgent[] {
   return state.agents
 }
 
+/**
+ * Anchor an existing platform agent on Arc: broadcast a real ERC-8004 registration
+ * (server signer, env-gated behind ARC_SIGNER_KEY) and record the result on the agent.
+ * Deliberate + human-triggered from the UI, so it stays human-on-the-loop. Without a
+ * signer key it returns the exact prepared call and leaves the agent queued.
+ */
+export async function anchorAgentOnchain(agentId: string) {
+  const agent = state.agents.find((a) => a.id === agentId)
+  if (!agent) return { error: 'Unknown agent' }
+
+  const metadataUri =
+    'data:application/json,' +
+    encodeURIComponent(
+      JSON.stringify({ name: agent.name, category: agent.category, standard: 'ERC-8004', app: 'A-Identity' }),
+    )
+
+  const result = await registerAgentOnchain(metadataUri)
+
+  if (result.executed) {
+    agent.onchain = 'registered'
+    agent.onchainTx = result.txHash
+    agent.onchainExplorer = result.explorerUrl
+    agent.onchainAgentId = result.agentId
+    pushActivity(agent, `Anchored on Arc: ERC-8004 id ${result.agentId ?? '?'} (tx ${short(result.txHash)})`)
+    save(state)
+  }
+
+  return {
+    agent: {
+      id: agent.id,
+      onchain: agent.onchain,
+      onchainTx: agent.onchainTx,
+      onchainExplorer: agent.onchainExplorer,
+      onchainAgentId: agent.onchainAgentId,
+    },
+    result,
+  }
+}
+
 // ── instructions ──────────────────────────────────────────────────────────────
 
 export function createInstruction(input: {
@@ -374,6 +418,9 @@ export function marketplace(viewer?: string) {
       chain: a.chain,
       kya: a.kya,
       onchain: a.onchain,
+      onchainTx: a.onchainTx,
+      onchainExplorer: a.onchainExplorer,
+      onchainAgentId: a.onchainAgentId,
       walletAddress: a.walletAddress,
       followers: a.followers.length,
       followedByViewer: viewer ? a.followers.includes(viewer) : false,

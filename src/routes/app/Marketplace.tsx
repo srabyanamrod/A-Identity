@@ -23,6 +23,9 @@ type MarketAgent = {
   chain: string
   kya: string
   onchain: string
+  onchainTx?: string
+  onchainExplorer?: string
+  onchainAgentId?: string
   walletAddress: string | null
   followers: number
   followedByViewer: boolean
@@ -35,6 +38,8 @@ export default function Marketplace() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [openActivity, setOpenActivity] = useState<string | null>(null)
+  const [anchoringId, setAnchoringId] = useState<string | null>(null)
+  const [anchorNote, setAnchorNote] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     try {
@@ -76,6 +81,37 @@ export default function Marketplace() {
       })
     } catch {
       load()
+    }
+  }
+
+  // Deliberate, human-triggered on-chain anchor for a queued agent: broadcasts a
+  // real ERC-8004 registration on Arc and flips the card to "registered" with a tx link.
+  const anchorAgent = async (agentId: string) => {
+    setAnchoringId(agentId)
+    setAnchorNote((n) => ({ ...n, [agentId]: '' }))
+    try {
+      const res = await fetch(`${MCP_BASE}/api/agents/anchor`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId }),
+      })
+      const data = (await res.json()) as {
+        agent?: { onchain?: string; onchainTx?: string; onchainExplorer?: string; onchainAgentId?: string }
+        result?: { executed?: boolean; reason?: string }
+        error?: string
+      }
+      if (data.result?.executed && data.agent) {
+        setAgents((prev) => prev.map((a) => (a.id === agentId ? { ...a, ...data.agent } : a)))
+      } else {
+        setAnchorNote((n) => ({
+          ...n,
+          [agentId]: data.result?.reason ?? data.error ?? 'Could not broadcast. Set a funded ARC_SIGNER_KEY on the server.',
+        }))
+      }
+    } catch {
+      setAnchorNote((n) => ({ ...n, [agentId]: 'Anchoring needs the MCP server with a funded ARC_SIGNER_KEY.' }))
+    } finally {
+      setAnchoringId(null)
     }
   }
 
@@ -169,9 +205,20 @@ export default function Marketplace() {
               <span className="inline-flex items-center gap-1 rounded-full bg-[#2775CA]/10 px-2.5 py-1 text-[11px] font-bold text-[#2775CA]">
                 Arc testnet
               </span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
-                <Clock size={12} /> on-chain queued
-              </span>
+              {a.onchain === 'registered' ? (
+                <a
+                  href={a.onchainExplorer ?? '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-full bg-[#2775CA]/10 px-2.5 py-1 text-[11px] font-bold text-[#2775CA] hover:underline"
+                >
+                  <BadgeCheck size={12} /> On-chain #{a.onchainAgentId ?? ''}
+                </a>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                  <Clock size={12} /> on-chain queued
+                </span>
+              )}
             </div>
 
             {/* Capabilities */}
@@ -185,6 +232,21 @@ export default function Marketplace() {
                     {c}
                   </span>
                 ))}
+              </div>
+            )}
+
+            {/* On-chain anchor: real ERC-8004 registration on Arc, for queued agents */}
+            {a.onchain !== 'registered' && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => anchorAgent(a.id)}
+                  disabled={anchoringId === a.id}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#2775CA]/30 px-3 py-1.5 text-xs font-semibold text-[#2775CA] transition-colors hover:bg-[#2775CA]/5 disabled:opacity-50"
+                >
+                  {anchoringId === a.id ? 'Anchoring on Arc...' : 'Anchor on Arc'}
+                </button>
+                {anchorNote[a.id] && <p className="mt-1.5 text-[11px] text-amber-700">{anchorNote[a.id]}</p>}
               </div>
             )}
 

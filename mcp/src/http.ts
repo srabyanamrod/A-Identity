@@ -19,6 +19,7 @@ import { getArcStatus } from './arc.js'
 import { getCircleStatus } from './circle.js'
 import { readArcContracts, registerAgentOnchain, createJobOnchain } from './arc-contracts.js'
 import {
+  anchorAgentOnchain,
   approveInstruction,
   assignWallet,
   createAgent,
@@ -201,6 +202,14 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/platform-agents') {
     sendJson(res, 200, { agents: listPlatformAgents() })
+    return
+  }
+  // Anchor an existing platform agent on-chain (real ERC-8004 register, env-gated)
+  if (req.method === 'POST' && url.pathname === '/api/agents/anchor') {
+    const body = (await readBody(req).catch(() => null)) as { agentId?: string } | null
+    if (!body?.agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
+    const r = await anchorAgentOnchain(body.agentId)
+    sendJson(res, 'error' in r ? 404 : 200, r)
     return
   }
 
