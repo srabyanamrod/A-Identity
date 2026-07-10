@@ -370,3 +370,103 @@ export async function readPolicyVault(vault: string) {
     explorer: addressUrl(vault),
   }
 }
+
+// ── KYA attestation: ERC-8004 ValidationRegistry ─────────────────────────────────
+//
+// After an agent proves control of its wallet (off-chain signature), we anchor that
+// result on Arc's real ERC-8004 ValidationRegistry: our signer (which owns the agent's
+// ERC-8004 id) opens a validationRequest naming itself as validator, then answers it
+// with response=100, tag "kya". This is an operator/wallet-proof attestation — publicly
+// readable via getValidationStatus/getSummary — NOT independent third-party validation.
+// ABI recovered + selector-verified against the live implementation behind the proxy.
+
+const ZERO_HASH = ('0x' + '0'.repeat(64)) as `0x${string}`
+
+const VALIDATION_ABI = [
+  { type: 'function', name: 'validationRequest', stateMutability: 'nonpayable', inputs: [
+    { name: 'validatorAddress', type: 'address' }, { name: 'agentId', type: 'uint256' },
+    { name: 'requestURI', type: 'string' }, { name: 'requestHash', type: 'bytes32' },
+  ], outputs: [] },
+  { type: 'function', name: 'validationResponse', stateMutability: 'nonpayable', inputs: [
+    { name: 'requestHash', type: 'bytes32' }, { name: 'response', type: 'uint8' },
+    { name: 'responseURI', type: 'string' }, { name: 'responseHash', type: 'bytes32' }, { name: 'tag', type: 'string' },
+  ], outputs: [] },
+  { type: 'function', name: 'getValidationStatus', stateMutability: 'view', inputs: [{ name: 'requestHash', type: 'bytes32' }], outputs: [
+    { name: 'validatorAddress', type: 'address' }, { name: 'agentId', type: 'uint256' }, { name: 'response', type: 'uint8' },
+    { name: 'responseHash', type: 'bytes32' }, { name: 'tag', type: 'string' }, { name: 'lastUpdate', type: 'uint256' },
+  ] },
+  { type: 'function', name: 'getSummary', stateMutability: 'view', inputs: [
+    { name: 'agentId', type: 'uint256' }, { name: 'validatorAddresses', type: 'address[]' }, { name: 'tag', type: 'string' },
+  ], outputs: [{ name: 'count', type: 'uint64' }, { name: 'averageResponse', type: 'uint8' }] },
+  { type: 'function', name: 'getAgentValidations', stateMutability: 'view', inputs: [{ name: 'agentId', type: 'uint256' }], outputs: [{ name: 'requestHashes', type: 'bytes32[]' }] },
+] as const
+
+type ValidationExecuted = { executed: true; txHash: string; explorerUrl: string; requestHash: string }
+
+/**
+ * Attest an agent's KYA result on the ERC-8004 ValidationRegistry (two real txs:
+ * validationRequest then validationResponse=100, tag "kya"). Prepared without a key.
+ * Requires our signer to own the ERC-8004 agentId (i.e. the agent was anchored first).
+ */
+export async function recordValidationOnchain(
+  agentId: bigint,
+  requestUri: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<Prepared | ValidationExecuted> {
+  const { keccak256, toHex } = await import('viem')
+  const requestHash = keccak256(toHex(`kya:${agentId.toString()}:${requestUri}:${Date.now()}`))
+  const signer = await walletClient(env)
+  if (!signer) {
+    return {
+      executed: false,
+      contract: CONTRACTS.validationRegistry,
+      function: 'validationRequest(address,uint256,string,bytes32) + validationResponse(bytes32,uint8,string,bytes32,string)',
+      args: [agentId.toString(), requestUri, requestHash],
+      reason: 'No ARC_SIGNER_KEY set. This opens + answers an ERC-8004 validation (response=100, tag "kya") for the agent.',
+    }
+  }
+  const client = await publicClient()
+  const validator = signer.account.address
+  const reqTx = await signer.client.writeContract({
+    address: CONTRACTS.validationRegistry, abi: VALIDATION_ABI, functionName: 'validationRequest',
+    args: [validator, agentId, requestUri, requestHash],
+  })
+  await client.waitForTransactionReceipt({ hash: reqTx })
+  const respTx = await signer.client.writeContract({
+    address: CONTRACTS.validationRegistry, abi: VALIDATION_ABI, functionName: 'validationResponse',
+    args: [requestHash, 100, requestUri, ZERO_HASH, 'kya'],
+  })
+  await client.waitForTransactionReceipt({ hash: respTx })
+  return { executed: true, txHash: respTx, explorerUrl: tx(respTx), requestHash }
+}
+
+/** Read an agent's on-chain KYA validation summary (no key needed). */
+export async function readValidation(agentId: bigint, env: NodeJS.ProcessEnv = process.env) {
+  const client = await publicClient()
+  try {
+    const validator = (await walletClient(env))?.account.address
+    const hashes = (await client.readContract({
+      address: CONTRACTS.validationRegistry, abi: VALIDATION_ABI, functionName: 'getAgentValidations', args: [agentId],
+    })) as readonly string[]
+    let kyaCount = 0
+    let kyaAverage = 0
+    if (validator) {
+      const summary = (await client.readContract({
+        address: CONTRACTS.validationRegistry, abi: VALIDATION_ABI, functionName: 'getSummary',
+        args: [agentId, [validator as `0x${string}`], 'kya'],
+      })) as readonly [bigint, number]
+      kyaCount = Number(summary[0])
+      kyaAverage = Number(summary[1])
+    }
+    return {
+      agentId: agentId.toString(),
+      validations: hashes.length,
+      kyaCount,
+      kyaAverage,
+      registry: CONTRACTS.validationRegistry,
+      explorer: addressUrl(CONTRACTS.validationRegistry),
+    }
+  } catch (e) {
+    return { agentId: agentId.toString(), error: e instanceof Error ? e.message : String(e) }
+  }
+}

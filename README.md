@@ -59,6 +59,24 @@ Try it: `cd mcp && node --env-file=.env scripts/test-vault.mjs` (needs a funded
 `ARC_SIGNER_KEY`) deploys a vault and plays pay / over-limit-revert / freeze / cap out on
 real Arc testnet — or use the **Permissions → On-chain policy vault** panel in the app.
 
+### Know Your Agent (KYA) — a real check, not a stamp
+
+An agent is no longer marked `verified` for free. It must **prove control of its wallet** by
+signing a challenge (the same `verifyMessage` primitive as wallet sign-in); only then does its
+KYA flip to `verified`. New agents start `unverified`; a wrong signature is rejected. The result
+is attested on Arc's real **ERC-8004 ValidationRegistry** (`validationRequest` +
+`validationResponse`=100, tag `"kya"`, readable via `getSummary`). Honest by design: an
+operator/wallet-proof attestation, not a third-party audit.
+
+### Circle Agent Wallet — hosted wallet-layer screening
+
+An agent can also be given a **Circle Agent Wallet** (Developer-Controlled, on ARC-TESTNET):
+Circle's hosted policy engine screens every USDC transfer at the wallet layer (sanctions, address
+allow/block, freeze). Credential-gated behind `CIRCLE_API_KEY` + `CIRCLE_ENTITY_SECRET`; a clean
+no-op without them. Precise by design: Circle screens transfers — the USD spend cap stays enforced
+by our server and the on-chain vault. Together: **server pre-check + Circle screening + on-chain
+vault** = three independent guarantees.
+
 ## Architecture
 
 ```
@@ -98,6 +116,11 @@ POST /api/instructions/approve  human approval
 POST /api/instructions/execute  execute (through the vault if provisioned, else direct; simulated without a signer)
 POST /api/agents/vault          provision an on-chain AgentSpendPolicy vault (real w/ key)
 GET  /api/agents/vault          live on-chain vault policy + balance
+POST /api/agents/circle-wallet  provision a Circle Agent Wallet (hosted screening, w/ Circle keys)
+GET  /api/agents/circle-wallet  live Circle wallet state + balance
+POST /api/agents/kya/challenge  start a KYA wallet-control challenge
+POST /api/agents/kya/verify     verify the signature (+ on-chain ValidationRegistry attestation)
+GET  /api/agents/kya            KYA status + live on-chain validation
 GET  /api/marketplace           Agent House feed
 POST /api/follow                follow an agent
 ```

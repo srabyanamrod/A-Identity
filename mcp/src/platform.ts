@@ -17,9 +17,11 @@
  */
 import { loadState, saveState as save } from './storage.js'
 import { ARC_TESTNET } from './arc.js'
+import { randomBytes } from 'node:crypto'
 import {
   registerAgentOnchain, payUsdcOnchain, ARC_EXPLORER,
   deployPolicyVault, policyPay, policyOwnerPay, readPolicyVault,
+  recordValidationOnchain, readValidation,
 } from './arc-contracts.js'
 import { createAgentWallet, circlePay, readCircleWallet } from './circle-agent.js'
 
@@ -49,7 +51,15 @@ export type PlatformAgent = {
   walletAddress: string | null
   chain: 'arc'
   chainId: number
-  kya: 'verified'
+  /** KYA (Know Your Agent): 'verified' ONLY after the agent proves control of its
+   *  wallet by signing a challenge. New agents start 'unverified'. */
+  kya: 'unverified' | 'verified'
+  /** How KYA was proven (the wallet-control signature). */
+  kyaProof?: { address: string; at: string; method: 'wallet-signature' }
+  /** Set once the KYA result is attested on the ERC-8004 ValidationRegistry (real tx). */
+  kyaOnchainTx?: string
+  kyaOnchainExplorer?: string
+  kyaRequestHash?: string
   /** Session email of the creator; agent-scoped mutations are restricted to them. */
   owner?: string
   onchain: 'queued' | 'registered'
@@ -263,7 +273,7 @@ export function createAgent(input: {
     walletAddress: input.walletAddress ?? null,
     chain: 'arc',
     chainId: ARC_TESTNET.id,
-    kya: 'verified',
+    kya: 'unverified',
     owner: input.owner,
     onchain: 'queued',
     passport: {
@@ -278,7 +288,7 @@ export function createAgent(input: {
       },
     },
     followers: [],
-    activity: [{ at: new Date().toISOString(), text: 'Agent registered, KYA passed, on-chain anchor queued' }],
+    activity: [{ at: new Date().toISOString(), text: 'Agent registered; KYA pending (prove wallet control), on-chain anchor queued' }],
     createdAt: new Date().toISOString(),
   }
 
@@ -336,6 +346,100 @@ export async function anchorAgentOnchain(agentId: string, caller?: string) {
     },
     result,
   }
+}
+
+// ── KYA (Know Your Agent): prove wallet control ──────────────────────────────────
+
+/** Ephemeral KYA challenges, keyed by agentId (in-memory; never persisted). */
+const kyaChallenges = new Map<string, string>()
+
+/** Start a KYA challenge: the agent signs this to prove it controls its wallet. */
+export function startKyaChallenge(
+  agentId: string,
+  caller?: string,
+): { address: string; message: string } | { error: string } {
+  const agent = state.agents.find((a) => a.id === agentId)
+  if (!agent) return { error: 'Unknown agent' }
+  if (!ownsAgent(agent, caller)) return { error: 'Forbidden: not the agent owner' }
+  if (!agent.walletAddress) return { error: 'Agent has no wallet to prove; create or assign one first' }
+  const nonce = randomBytes(16).toString('hex')
+  kyaChallenges.set(agentId, nonce)
+  const message = `A-Identity KYA: prove control of ${agent.walletAddress}\nAgent: ${agentId}\nNonce: ${nonce}`
+  return { address: agent.walletAddress, message }
+}
+
+/**
+ * Finish KYA: verify the agent's wallet signed the challenge (viem verifyMessage). On
+ * success sets kya='verified' + records the proof, then best-effort attests the result
+ * on the real ERC-8004 ValidationRegistry (needs the agent anchored + a signer key; an
+ * on-chain failure never undoes the cryptographically-proven 'verified' state).
+ */
+export async function verifyKya(
+  agentId: string,
+  message: string,
+  signature: string,
+  caller?: string,
+): Promise<{ error: string } | { kya: 'verified'; kyaProof: PlatformAgent['kyaProof']; onchain: unknown }> {
+  const agent = state.agents.find((a) => a.id === agentId)
+  if (!agent) return { error: 'Unknown agent' }
+  if (!ownsAgent(agent, caller)) return { error: 'Forbidden: not the agent owner' }
+  if (!agent.walletAddress) return { error: 'Agent has no wallet' }
+  const nonce = kyaChallenges.get(agentId)
+  if (!nonce || !message.includes(nonce)) return { error: 'Stale or missing challenge; request a new one' }
+
+  const { verifyMessage } = await import('viem')
+  let ok = false
+  try {
+    ok = await verifyMessage({
+      address: agent.walletAddress as `0x${string}`,
+      message,
+      signature: signature as `0x${string}`,
+    })
+  } catch {
+    ok = false
+  }
+  if (!ok) return { error: 'Signature does not match the agent wallet' }
+
+  kyaChallenges.delete(agentId)
+  agent.kya = 'verified'
+  agent.kyaProof = { address: agent.walletAddress, at: new Date().toISOString(), method: 'wallet-signature' }
+  pushActivity(agent, `KYA passed: wallet control proven (${short(agent.walletAddress)})`)
+
+  // Layer B — anchor the KYA result on the ERC-8004 ValidationRegistry (best-effort).
+  let onchain: unknown = null
+  if (agent.onchainAgentId) {
+    const requestUri =
+      'data:application/json,' +
+      encodeURIComponent(
+        JSON.stringify({ kya: 'wallet-signature', agent: agent.id, address: agent.walletAddress, at: agent.kyaProof.at }),
+      )
+    const r = await recordValidationOnchain(BigInt(agent.onchainAgentId), requestUri)
+    if (r.executed) {
+      agent.kyaOnchainTx = r.txHash
+      agent.kyaOnchainExplorer = r.explorerUrl
+      agent.kyaRequestHash = r.requestHash
+      pushActivity(agent, `KYA attested on-chain (ERC-8004 ValidationRegistry, tx ${short(r.txHash)})`)
+      onchain = { txHash: r.txHash, explorerUrl: r.explorerUrl, requestHash: r.requestHash }
+    } else {
+      onchain = { prepared: true, reason: r.reason }
+    }
+  }
+  save(state)
+  return { kya: 'verified', kyaProof: agent.kyaProof, onchain }
+}
+
+/** Read an agent's KYA status + live on-chain validation (needs the agent anchored). */
+export async function getAgentKya(agentId: string) {
+  const agent = state.agents.find((a) => a.id === agentId)
+  if (!agent) return { error: 'Unknown agent' }
+  const base = {
+    kya: agent.kya,
+    kyaProof: agent.kyaProof ?? null,
+    kyaOnchainTx: agent.kyaOnchainTx ?? null,
+    kyaOnchainExplorer: agent.kyaOnchainExplorer ?? null,
+  }
+  if (!agent.onchainAgentId) return { ...base, onchain: null }
+  return { ...base, onchain: await readValidation(BigInt(agent.onchainAgentId)) }
 }
 
 // ── on-chain policy vault ────────────────────────────────────────────────────────

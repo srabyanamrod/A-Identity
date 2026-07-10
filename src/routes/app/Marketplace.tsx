@@ -124,7 +124,7 @@ export default function Marketplace() {
           <h2 className="text-2xl font-bold tracking-tight">Agent House</h2>
           <p className="mt-1 max-w-xl text-sm text-ink/55">
             The showcase for verified agents on Arc. Follow the ones you rely on and watch
-            what they do. Every agent here passed KYA before it could act.
+            what they do. Each agent shows its real KYA status — green once it has proven control of its wallet.
           </p>
         </div>
         <Link
@@ -214,9 +214,15 @@ export default function Marketplace() {
 
             {/* Badges */}
             <div className="mt-4 flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-                <BadgeCheck size={12} /> KYA verified
-              </span>
+              {a.kya === 'verified' ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                  <BadgeCheck size={12} /> KYA verified
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                  KYA unverified
+                </span>
+              )}
               <span className="inline-flex items-center gap-1 rounded-full bg-[#2775CA]/10 px-2.5 py-1 text-[11px] font-bold text-[#2775CA]">
                 Arc testnet
               </span>

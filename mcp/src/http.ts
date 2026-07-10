@@ -40,6 +40,9 @@ import {
   getAgentVault,
   provisionCircleWallet,
   getAgentCircleWallet,
+  startKyaChallenge,
+  verifyKya,
+  getAgentKya,
   type InstructionType,
 } from './platform.js'
 import { issueToken, verifyToken } from './auth.js'
@@ -363,6 +366,36 @@ const server = http.createServer(async (req, res) => {
     const agentId = url.searchParams.get('agentId') ?? ''
     if (!agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
     const r = await getAgentCircleWallet(agentId)
+    if ('error' in r && typeof r.error === 'string') { sendJson(res, errStatus(r.error), r); return }
+    sendJson(res, 200, r)
+    return
+  }
+  // ── KYA (Know Your Agent): prove the agent controls its wallet ─────────────────
+  // Start a challenge for the agent to sign (owner-only)
+  if (req.method === 'POST' && url.pathname === '/api/agents/kya/challenge') {
+    const body = (await readBody(req).catch(() => null)) as { agentId?: string } | null
+    if (!body?.agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
+    const r = startKyaChallenge(body.agentId, caller ?? undefined)
+    if ('error' in r) { sendJson(res, errStatus(r.error), r); return }
+    sendJson(res, 200, r)
+    return
+  }
+  // Finish KYA: verify the wallet signature, mark verified, attest on-chain (best-effort)
+  if (req.method === 'POST' && url.pathname === '/api/agents/kya/verify') {
+    const body = (await readBody(req).catch(() => null)) as { agentId?: string; message?: string; signature?: string } | null
+    if (!body?.agentId || !body?.message || !body?.signature) {
+      sendJson(res, 400, { error: 'agentId, message, signature required' }); return
+    }
+    const r = await verifyKya(body.agentId, body.message, body.signature, caller ?? undefined)
+    if ('error' in r) { sendJson(res, errStatus(r.error), r); return }
+    sendJson(res, 200, r)
+    return
+  }
+  // Read an agent's KYA status + live on-chain validation
+  if (req.method === 'GET' && url.pathname === '/api/agents/kya') {
+    const agentId = url.searchParams.get('agentId') ?? ''
+    if (!agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
+    const r = await getAgentKya(agentId)
     if ('error' in r && typeof r.error === 'string') { sendJson(res, errStatus(r.error), r); return }
     sendJson(res, 200, r)
     return

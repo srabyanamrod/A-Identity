@@ -15,6 +15,7 @@
  *   J. Settlement                 execute -> real USDC on Arc (with a key) or simulated
  *   J2. On-chain policy vault     provision an AgentSpendPolicy contract; payment settles through it (enforcedBy=onchain-vault)
  *   K. On-chain identity          anchor -> real ERC-8004 register (with a key) or prepared
+ *   K2. KYA                       prove wallet control (signature) -> verified; on-chain attestation via ERC-8004 ValidationRegistry
  *   L. Social                     follow an agent in Agent House
  *   M. Reputation                 computed from real activity, bounded 0..1000
  *
@@ -226,6 +227,24 @@ async function main() {
   const anchored = anchor.json?.result?.executed === true
   check('anchor executes on-chain (key) or returns a prepared call', anchored || anchor.json?.result?.executed === false, JSON.stringify(anchor.json?.result || {}).slice(0, 60))
   if (anchored) check('  ↳ anchored ERC-8004 id + tx', !!anchor.json?.agent?.onchainAgentId && /^0x[0-9a-f]{64}$/i.test(anchor.json?.agent?.onchainTx || ''))
+
+  // ── K2. KYA (Know Your Agent) ─────────────────────────────────────────────────
+  phase('K2. KYA (prove wallet control)')
+  const kyaAcct = privateKeyToAccount(generatePrivateKey())
+  const kyaAgent = (await api('POST', '/api/agents', { token: alice, body: { name: `E2E KYA ${Date.now()}`, category: 'Trading / Finance', capabilities: ['Payments'], walletAddress: kyaAcct.address } })).json?.agent?.id
+  const kyaBefore = await api('GET', `/api/agents/kya?agentId=${kyaAgent}`)
+  check('new agent starts KYA unverified', kyaBefore.json?.kya === 'unverified', kyaBefore.json?.kya)
+  const kyaAnchored = (await api('POST', '/api/agents/anchor', { token: alice, body: { agentId: kyaAgent } })).json?.result?.executed === true
+  const chal = await api('POST', '/api/agents/kya/challenge', { token: alice, body: { agentId: kyaAgent } })
+  check('KYA challenge targets the agent wallet', chal.json?.address?.toLowerCase() === kyaAcct.address.toLowerCase() && !!chal.json?.message)
+  const kyaSig = await kyaAcct.signMessage({ message: chal.json.message })
+  const kyaVer = await api('POST', '/api/agents/kya/verify', { token: alice, body: { agentId: kyaAgent, message: chal.json.message, signature: kyaSig } })
+  check('KYA verified by a real wallet signature', kyaVer.json?.kya === 'verified', JSON.stringify(kyaVer.json).slice(0, 60))
+  if (kyaAnchored) check('  ↳ KYA attested on-chain (ERC-8004 ValidationRegistry tx)', /^0x[0-9a-f]{64}$/i.test(kyaVer.json?.onchain?.txHash || ''))
+  const chal2 = await api('POST', '/api/agents/kya/challenge', { token: alice, body: { agentId: kyaAgent } })
+  const wrongSig = await privateKeyToAccount(generatePrivateKey()).signMessage({ message: chal2.json.message })
+  const kyaBad = await api('POST', '/api/agents/kya/verify', { token: alice, body: { agentId: kyaAgent, message: chal2.json.message, signature: wrongSig } })
+  check('KYA rejects a wrong signature', kyaBad.status !== 200, `HTTP ${kyaBad.status}`)
 
   // ── L. Social ─────────────────────────────────────────────────────────────────
   phase('L. Social (Agent House)')
