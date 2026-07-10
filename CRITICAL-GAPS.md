@@ -19,6 +19,28 @@ Beyond that, there are serious gaps between the story the product sells and what
 
 ---
 
+## 📊 Progress — closed vs open (updated 2026-07-10)
+
+Live: frontend https://a-identity.vercel.app · backend https://a-identity-backend.onrender.com
+
+| # | Gap | Status |
+|---|-----|--------|
+| 1 | No backend auth / approval gate unprotected | ❌ open |
+| 2 | Private key server-side + rendered to DOM | ❌ open |
+| 3 | No KYA verification | ❌ open |
+| 4 | Reputation is mock (not on-chain) | ❌ open |
+| 5 | x402 not implemented | 🟡 real USDC settlement added (ERC-20 transfer on Arc), but not the x402 protocol |
+| 6 | Core flow disconnected + always simulated | ✅ **CLOSED** — instruction console + on-chain anchor + real USDC settlement, verified end-to-end |
+| 7 | Wallet + Permissions screens fake | 🟡 Permissions now real (policy engine, cumulative daily cap, 00:00 UTC reset, freeze); Wallet still mock |
+| 8 | README `.env` instruction wrong | 🟡 handled for deploy (Render env panel + `PORT` fix); local README still inaccurate |
+| 9 | `totalSupply()` reverts (minor) | ❌ open |
+| 10 | Production maturity | 🟡 deployability **CLOSED** (Render + Vercel); tests/CI still missing; JSON state ephemeral on Render |
+
+**Closed this session:** #6 fully · Permissions half of #7 · deployability half of #10 · a real payment rail for #5.
+**Remaining priorities:** #1 auth · #4 reputation · #2 key handling · the Wallet half of #7.
+
+---
+
 ## 🔴 Critical gaps
 
 ### 1. The security model is not implemented (the biggest issue)
