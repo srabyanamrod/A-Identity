@@ -67,9 +67,9 @@ export default function AgentId() {
     }
   }, [])
 
-  // Use real data when available, fall back to mock
-  const score = realRep?.score ?? liveRep?.score ?? 742
-  const breakdown = realRep?.breakdown ?? liveRep?.breakdown ?? { settlement: 600, validation: 107, tenure: 35 }
+  // Real reputation when available; no fabricated fallback (show '—' if we have none).
+  const score = realRep?.score ?? liveRep?.score ?? null
+  const breakdown = realRep?.breakdown ?? liveRep?.breakdown ?? { settlement: 0, validation: 0, tenure: 0 }
 
   const stageIndex = 2 // "live": demo is fully registered
 
@@ -126,7 +126,7 @@ export default function AgentId() {
           <div className="text-right">
             <div className="text-xs opacity-60">ERC-8004</div>
             <div className="mt-1 flex items-center justify-end gap-1.5">
-              <div className="text-3xl font-bold leading-none">{score}</div>
+              <div className="text-3xl font-bold leading-none">{score ?? '—'}</div>
               {repLoading && <RefreshCw size={13} className="animate-spin opacity-50" />}
             </div>
             <div className="mt-0.5 text-xs opacity-60">Reputation</div>
@@ -263,11 +263,11 @@ export default function AgentId() {
             { threshold: 100, label: 'First verified agent', done: true },
             { threshold: 300, label: 'Trusted agent (auto-approve eligible)', done: true },
             { threshold: 500, label: 'Established agent (raised daily cap)', done: true },
-            { threshold: score, label: 'You are here', done: true, current: true },
+            ...(score != null ? [{ threshold: score, label: 'You are here', done: true, current: true }] : []),
             { threshold: 900, label: 'Elite agent (full autonomy tier)', done: false },
           ].map(({ threshold, label, done, current }) => (
             <li
-              key={threshold}
+              key={label}
               className={`flex items-center gap-3 rounded-xl px-4 py-3 ${
                 current ? 'border border-accent/25 bg-accent/[0.05]' : 'bg-cream/40'
               }`}
@@ -325,7 +325,7 @@ function ReputationCard({
   )
 }
 
-const MCP_BASE = (import.meta.env.VITE_MCP_URL as string | undefined) ?? 'http://localhost:3399'
+import { MCP_BASE } from '../../lib/mcpBase'
 
 const CAPABILITIES = ['Payments', 'Purchases', 'Rentals', 'Batch actions'] as const
 

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowLeftRight,
@@ -12,34 +13,118 @@ import { useAuth } from '../../store/auth'
 import { useMcpChains, useMcpHealth } from '../../hooks/useMcp'
 import { CHAINS } from '../../lib/chains'
 
-const ACTIVITY = [
-  { who: 'ResearchBot', action: 'paid 0.001 USDC via x402', when: '2m ago', type: 'pay', chain: 'arc' },
-  { who: 'Human approval', action: 'settlement of 5.00 USDC confirmed', when: '1h ago', type: 'human', chain: 'arbitrum' },
-  { who: 'Reputation engine', action: 'score updated to 742 (+18)', when: '5h ago', type: 'rep', chain: null },
-  { who: 'DataProvider', action: 'resolved via ERC-8004 on Base', when: 'Yesterday', type: 'id', chain: 'base' },
-] as const
+import { MCP_BASE } from '../../lib/mcpBase'
 
-const STATUS_ITEMS = [
-  { label: 'Agent ID', detail: 'ERC-8004 verified, multi-chain', ok: true, to: '/app/agent-id', icon: Fingerprint },
-  { label: 'Wallet', detail: '153.50 USDC unified balance', ok: true, to: '/app/wallet', icon: CreditCard },
-  { label: 'Permissions', detail: '6 of 10 controls set', ok: true, to: '/app/permissions', icon: SlidersHorizontal },
-] as const
+type Perms = { dailyCapUsd: number; autoApproveUnderUsd: number; frozen: boolean }
+type Agent = {
+  id: string
+  name: string
+  walletAddress: string | null
+  kya: 'unverified' | 'verified'
+  onchain: 'queued' | 'registered'
+  permissions: Perms
+  activity: { at: string; text: string }[]
+}
+
+/** Compact "5h ago" style relative time. */
+function ago(iso: string): string {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 60) return 'just now'
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
 
 export default function Dashboard() {
   const user = useAuth((s) => s.user)
   const mcpOnline = useMcpHealth()
   const { chains: mcpChains, loading: chainsLoading } = useMcpChains()
-
-  // Merge MCP live chain data with static config
   const mcpChainById = Object.fromEntries(mcpChains.map((c) => [c.id, c]))
+
+  // Real data for the user's first agent (empty until the backend answers).
+  const [agent, setAgent] = useState<Agent | null>(null)
+  const [rep, setRep] = useState<number | null>(null)
+  const [balance, setBalance] = useState<number | null>(null)
+  const [settlements, setSettlements] = useState<number | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const list = await fetch(`${MCP_BASE}/api/platform-agents`, { signal: AbortSignal.timeout(6000) }).then((r) =>
+          r.json(),
+        )
+        const first: Agent | undefined = list.agents?.[0]
+        if (cancelled) return
+        if (!first) return
+        setAgent(first)
+        const [repRes, ixRes] = await Promise.all([
+          fetch(`${MCP_BASE}/api/agents/reputation?agentId=${first.id}`).then((r) => r.json()).catch(() => null),
+          fetch(`${MCP_BASE}/api/instructions?agentId=${first.id}`).then((r) => r.json()).catch(() => null),
+        ])
+        if (cancelled) return
+        if (repRes && !('error' in repRes) && typeof repRes.score === 'number') setRep(repRes.score)
+        if (Array.isArray(ixRes?.instructions))
+          setSettlements(ixRes.instructions.filter((i: { status: string }) => i.status === 'executed_onchain').length)
+        if (first.walletAddress) {
+          const bal = await fetch(`${MCP_BASE}/api/wallet-balance?address=${first.walletAddress}`)
+            .then((r) => r.json())
+            .catch(() => null)
+          if (!cancelled && bal?.balance != null) setBalance(Number(bal.balance))
+        }
+      } catch {
+        /* backend unreachable — leave everything empty (no fake numbers) */
+      } finally {
+        if (!cancelled) setLoaded(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const dash = '—'
+  const p = agent?.permissions
+  const statusItems = [
+    {
+      label: 'Agent ID',
+      detail: !agent
+        ? 'No agent yet'
+        : agent.onchain === 'registered'
+          ? `ERC-8004 anchored · KYA ${agent.kya}`
+          : `Registration queued · KYA ${agent.kya}`,
+      ok: agent?.onchain === 'registered' && agent?.kya === 'verified',
+      to: '/app/agent-id',
+      icon: Fingerprint,
+    },
+    {
+      label: 'Wallet',
+      detail: !agent?.walletAddress
+        ? 'No wallet yet'
+        : balance != null
+          ? `${balance.toFixed(4)} USDC on Arc`
+          : 'Balance loading…',
+      ok: (balance ?? 0) > 0,
+      to: '/app/wallet',
+      icon: CreditCard,
+    },
+    {
+      label: 'Permissions',
+      detail: !p ? 'Not set' : p.frozen ? 'Frozen — all activity paused' : `Daily cap $${p.dailyCapUsd}`,
+      ok: Boolean(p) && !p!.frozen,
+      to: '/app/permissions',
+      icon: SlidersHorizontal,
+    },
+  ]
+
+  const activity = agent?.activity ? [...agent.activity].slice(-6).reverse() : []
 
   return (
     <div className="mx-auto max-w-5xl">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">
-            Welcome back, {user?.name ?? 'there'}.
-          </h2>
+          <h2 className="text-2xl font-bold tracking-tight">Welcome back, {user?.name ?? 'there'}.</h2>
           <p className="mt-1 text-sm text-ink/55">
             Your agent console. Everything your agent needs to act, with you in the tower.
           </p>
@@ -56,23 +141,54 @@ export default function Dashboard() {
         >
           <span
             className={`h-1.5 w-1.5 rounded-full ${
-              mcpOnline === null
-                ? 'bg-ink/20'
-                : mcpOnline
-                  ? 'bg-emerald-400'
-                  : 'bg-red-400'
+              mcpOnline === null ? 'bg-ink/20' : mcpOnline ? 'bg-emerald-400' : 'bg-red-400'
             }`}
           />
           {mcpOnline === null ? 'Connecting MCP...' : mcpOnline ? 'MCP live' : 'MCP offline'}
         </div>
       </div>
 
-      {/* Stat grid */}
+      {/* No-agent nudge (only once we know the backend answered and there's nothing yet) */}
+      {loaded && !agent && (
+        <div className="mt-6 rounded-2xl border border-dashed border-ink/15 bg-white p-6 text-sm text-ink/60">
+          No agent registered yet.{' '}
+          <Link to="/app/agent-id" className="font-semibold text-accent hover:underline">
+            Claim an Agent ID
+          </Link>{' '}
+          to give it a wallet, limits, and an on-chain passport.
+        </div>
+      )}
+
+      {/* Stat grid — real values, em-dash until the backend answers */}
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard icon={Star} value="742" label="Reputation score" sub="+18 this week" to="/app/agent-id" />
-        <StatCard icon={CreditCard} value="$142.50" label="Wallet balance" sub="USDC on Arc" to="/app/wallet" />
-        <StatCard icon={ArrowLeftRight} value="18" label="Settlements" sub="this month" to="/app/settlements" />
-        <StatCard icon={SlidersHorizontal} value="6 / 10" label="Permissions" sub="controls active" to="/app/permissions" />
+        <StatCard
+          icon={Star}
+          value={rep != null ? String(rep) : dash}
+          label="Reputation score"
+          sub="from real activity"
+          to="/app/agent-id"
+        />
+        <StatCard
+          icon={CreditCard}
+          value={balance != null ? `${balance.toFixed(2)}` : dash}
+          label="Wallet balance"
+          sub="USDC on Arc (live)"
+          to="/app/wallet"
+        />
+        <StatCard
+          icon={ArrowLeftRight}
+          value={settlements != null ? String(settlements) : dash}
+          label="Settlements"
+          sub="settled on-chain"
+          to="/app/settlements"
+        />
+        <StatCard
+          icon={SlidersHorizontal}
+          value={p ? `$${p.dailyCapUsd}` : dash}
+          label="Daily cap"
+          sub={p ? `auto-approve $${p.autoApproveUnderUsd}` : 'set your limits'}
+          to="/app/permissions"
+        />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
@@ -80,7 +196,7 @@ export default function Dashboard() {
         <div className="rounded-2xl border border-ink/10 bg-white p-6 lg:col-span-2">
           <h3 className="mb-4 font-semibold">Agent status</h3>
           <ul className="flex flex-col gap-3">
-            {STATUS_ITEMS.map(({ label, detail, ok, to, icon: Icon }) => (
+            {statusItems.map(({ label, detail, ok, to, icon: Icon }) => (
               <li
                 key={label}
                 className="flex items-center justify-between gap-3 rounded-xl border border-ink/8 bg-cream/50 px-4 py-3"
@@ -110,35 +226,25 @@ export default function Dashboard() {
             ))}
           </ul>
 
-          {/* Multi-chain network panel */}
+          {/* Multi-chain network panel (live) */}
           <h3 className="mb-3 mt-6 font-semibold">Network</h3>
           <div className="grid gap-2 sm:grid-cols-3">
             {CHAINS.map((c) => {
               const mc = mcpChainById[c.id]
               return (
-                <div
-                  key={c.id}
-                  className="rounded-xl border border-ink/8 bg-cream/50 p-3"
-                >
+                <div key={c.id} className="rounded-xl border border-ink/8 bg-cream/50 p-3">
                   <div className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full" style={{ background: c.color }} />
                     <span className="text-xs font-semibold text-ink">{c.shortName}</span>
                     <span
                       className="ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
-                      style={{
-                        background: c.color + '18',
-                        color: c.color,
-                      }}
+                      style={{ background: c.color + '18', color: c.color }}
                     >
                       {c.status}
                     </span>
                   </div>
                   <div className="mt-2 text-[11px] leading-relaxed text-ink/45">
-                    {chainsLoading
-                      ? '...'
-                      : mc
-                        ? `${mc.agentCount} agent${mc.agentCount === 1 ? '' : 's'}`
-                        : 'No data yet'}
+                    {chainsLoading ? '...' : mc ? `${mc.agentCount} agent${mc.agentCount === 1 ? '' : 's'}` : 'No data yet'}
                   </div>
                   {c.explorer && (
                     <a
@@ -156,45 +262,26 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Activity feed */}
+        {/* Activity feed (real agent activity) */}
         <div className="rounded-2xl border border-ink/10 bg-white p-6">
           <h3 className="mb-4 font-semibold">Recent activity</h3>
-          <ul className="flex flex-col gap-4">
-            {ACTIVITY.map((a, i) => (
-              <li key={i} className="flex gap-3 text-sm">
-                <span
-                  className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                    a.type === 'pay'
-                      ? 'bg-[#2775CA]'
-                      : a.type === 'human'
-                        ? 'bg-emerald-500'
-                        : a.type === 'rep'
-                          ? 'bg-accent'
-                          : 'bg-ink/30'
-                  }`}
-                />
-                <span className="text-ink/70">
-                  <span className="font-semibold text-ink">{a.who}</span>{' '}
-                  {a.action}
-                  <span className="block text-xs text-ink/40">
-                    {a.when}
-                    {a.chain && (
-                      <span
-                        className="ml-1.5 rounded-full px-1.5 py-0.5 font-semibold capitalize"
-                        style={{
-                          background:
-                            (CHAINS.find((c) => c.id === a.chain)?.color ?? '#888') + '18',
-                          color: CHAINS.find((c) => c.id === a.chain)?.color ?? '#888',
-                        }}
-                      >
-                        {a.chain}
-                      </span>
-                    )}
+          {activity.length > 0 ? (
+            <ul className="flex flex-col gap-4">
+              {activity.map((a, i) => (
+                <li key={i} className="flex gap-3 text-sm">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+                  <span className="text-ink/70">
+                    {a.text}
+                    <span className="block text-xs text-ink/40">{ago(a.at)}</span>
                   </span>
-                </span>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-ink/45">
+              {loaded ? 'No activity yet. Register an agent and make a payment.' : 'Loading…'}
+            </p>
+          )}
           <Link
             to="/app/settlements"
             className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-accent hover:underline"
