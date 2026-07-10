@@ -411,3 +411,14 @@ server.listen(PORT, () => {
   console.error(`  GET  /api/circle        Circle platform link (wallets, gateway, USDC)`)
   console.error(`  GET  /api/agents        list agents (?chain=base|arbitrum|ethereum)`)
 })
+
+// Keep-alive: free-tier hosts (e.g. Render) idle-sleep after ~15 min without inbound
+// traffic. When RENDER_EXTERNAL_URL is present, ping our own public /health every 10
+// minutes so the service stays awake. No-op locally and in CI (the var is unset there).
+const keepAliveUrl = process.env.RENDER_EXTERNAL_URL
+if (keepAliveUrl) {
+  setInterval(() => {
+    fetch(`${keepAliveUrl}/health`).catch(() => {})
+  }, 10 * 60 * 1000)
+  console.error(`[a-identity-mcp] keep-alive self-ping every 10m -> ${keepAliveUrl}/health`)
+}
