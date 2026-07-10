@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowUpRight, CheckCircle2, Clock, ExternalLink, Send, ShieldQuestion } from 'lucide-react'
+import { ArrowUpRight, CheckCircle2, Clock, ExternalLink, Link2, Send, ShieldQuestion } from 'lucide-react'
 import { authHeaders } from '../../store/auth'
 import X402Panel from '../../components/app/X402Panel'
 
@@ -25,6 +25,7 @@ type Instruction = {
   policyNote: string
   txHash?: string
   explorerUrl?: string
+  enforcedBy?: 'server' | 'onchain-vault'
   createdAt: string
 }
 
@@ -205,6 +206,11 @@ export default function Settlements() {
                     <div className="flex items-center gap-2">
                       <span className="truncate font-mono text-xs text-ink">{short(ix.payee)}</span>
                       <StatusPill status={ix.status} />
+                      {ix.enforcedBy === 'onchain-vault' && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#7342E2]/10 px-2 py-0.5 text-[10px] font-bold text-[#7342E2]">
+                          <Link2 size={10} /> On-chain policy
+                        </span>
+                      )}
                     </div>
                     <div className="mt-0.5 text-xs text-ink/50">{ix.policyNote}</div>
                   </div>

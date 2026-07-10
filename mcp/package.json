@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "compile": "node scripts/compile-contracts.mjs",
     "test": "npm run build && node --test dist/auth.test.js dist/reputation.test.js",
     "e2e": "node e2e.mjs",
     "start": "node dist/index.js",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.19.21",
+    "solc": "^0.8.36",
     "typescript": "^5.9.3"
   }
 }

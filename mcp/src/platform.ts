@@ -17,7 +17,10 @@
  */
 import { loadState, saveState as save } from './storage.js'
 import { ARC_TESTNET } from './arc.js'
-import { registerAgentOnchain, payUsdcOnchain } from './arc-contracts.js'
+import {
+  registerAgentOnchain, payUsdcOnchain, ARC_EXPLORER,
+  deployPolicyVault, policyPay, policyOwnerPay, readPolicyVault,
+} from './arc-contracts.js'
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -53,6 +56,9 @@ export type PlatformAgent = {
   onchainTx?: string
   onchainExplorer?: string
   onchainAgentId?: string
+  /** On-chain AgentSpendPolicy vault: enforces this agent's spend policy on Arc. */
+  vaultAddress?: string
+  vaultExplorer?: string
   passport: {
     standard: 'ERC-8004'
     registrationJson: Record<string, unknown>
@@ -94,6 +100,8 @@ export type Instruction = {
   /** Set when the instruction was broadcast for real on Arc testnet. */
   txHash?: string
   explorerUrl?: string
+  /** Which layer settled or blocked this: server pre-check or the on-chain vault. */
+  enforcedBy?: 'server' | 'onchain-vault'
   createdAt: string
 }
 
@@ -323,6 +331,61 @@ export async function anchorAgentOnchain(agentId: string, caller?: string) {
   }
 }
 
+// ── on-chain policy vault ────────────────────────────────────────────────────────
+
+/**
+ * Provision an on-chain AgentSpendPolicy vault for an agent: deploy a contract
+ * that enforces the agent's daily cap + auto-approve ceiling on Arc, and
+ * optionally fund it with USDC. Once set, this agent's address payments settle
+ * through the vault (chain-enforced), with the server engine as the pre-check.
+ * Owner-only; env-gated behind ARC_SIGNER_KEY.
+ */
+export async function provisionAgentVault(
+  agentId: string,
+  opts: { fundUsd?: number; caller?: string } = {},
+) {
+  const agent = state.agents.find((a) => a.id === agentId)
+  if (!agent) return { error: 'Unknown agent' }
+  if (!ownsAgent(agent, opts.caller)) return { error: 'Forbidden: not the agent owner' }
+  if (agent.vaultAddress) return { error: 'Agent already has an on-chain policy vault', vaultAddress: agent.vaultAddress }
+
+  const dep = await deployPolicyVault({
+    dailyCapUsd: agent.permissions.dailyCapUsd,
+    autoApproveUsd: agent.permissions.autoApproveUnderUsd,
+  })
+  if (!dep.executed) return { error: dep.reason }
+
+  agent.vaultAddress = dep.vault
+  agent.vaultExplorer = `${ARC_EXPLORER}/address/${dep.vault}`
+  pushActivity(agent, `On-chain policy vault deployed at ${short(dep.vault)} (tx ${short(dep.txHash)})`)
+
+  let funding: unknown = null
+  if (opts.fundUsd && opts.fundUsd > 0) {
+    const f = await payUsdcOnchain(dep.vault, opts.fundUsd)
+    funding = f.executed
+      ? { amountUsd: opts.fundUsd, txHash: f.txHash, explorerUrl: f.explorerUrl }
+      : { error: f.reason }
+    if (f.executed) pushActivity(agent, `Funded vault with ${opts.fundUsd} USDC (tx ${short(f.txHash)})`)
+  }
+  save(state)
+  return {
+    vaultAddress: agent.vaultAddress,
+    vaultExplorer: agent.vaultExplorer,
+    deployTx: dep.txHash,
+    deployExplorer: dep.explorerUrl,
+    funding,
+  }
+}
+
+/** Read an agent's live on-chain vault policy + balance (no key needed). */
+export async function getAgentVault(agentId: string) {
+  const agent = state.agents.find((a) => a.id === agentId)
+  if (!agent) return { error: 'Unknown agent' }
+  if (!agent.vaultAddress) return { vaultAddress: null }
+  const live = await readPolicyVault(agent.vaultAddress)
+  return { vaultAddress: agent.vaultAddress, ...live }
+}
+
 // ── policy / permissions ───────────────────────────────────────────────────────
 
 function todayUTC(): string {
@@ -419,6 +482,12 @@ export function agentReputation(agentId: string) {
 
 // ── instructions ──────────────────────────────────────────────────────────────
 
+/** AgentSpendPolicy error names that are authoritative policy rejections (vs an
+ *  infra error, which we fall back on rather than treat as a "no"). */
+const VAULT_POLICY_ERRORS = new Set([
+  'IsFrozen', 'PayeeNotAllowed', 'AboveAutoApprove', 'DailyCapExceeded', 'ZeroAddress', 'TransferFailed',
+])
+
 export function createInstruction(input: {
   agentId: string
   type: InstructionType
@@ -503,8 +572,13 @@ export function approveInstruction(ixId: string, caller?: string): Instruction |
 }
 
 /**
- * Execute an approved or auto-approved instruction. On testnet, without holding
- * any key, execution is SIMULATED and labeled as such; the trail stays honest.
+ * Execute an approved or auto-approved instruction. When the agent has an
+ * on-chain policy vault, address payments settle THROUGH it — the vault enforces
+ * the daily cap / auto-approve ceiling / freeze on Arc, so a disallowed payment
+ * reverts on-chain (the source of truth). The server engine stays the pre-check;
+ * if the vault path hits an infra error (not a policy revert) we fall back to
+ * direct settlement so a chain hiccup never blocks the flow. Without a signer
+ * key, execution is SIMULATED and labeled as such; the trail stays honest.
  */
 export async function executeInstruction(ixId: string, caller?: string): Promise<Instruction | { error: string }> {
   const ix = state.instructions.find((i) => i.id === ixId)
@@ -514,16 +588,48 @@ export async function executeInstruction(ixId: string, caller?: string): Promise
   const agent = state.agents.find((a) => a.id === ix.agentId)
   if (agent && !ownsAgent(agent, caller)) return { error: 'Forbidden: not the agent owner' }
   const total = ix.amountUsd * ix.count
+  const fmt = (n: number) => (n < 0.01 ? n.toFixed(4) : n.toFixed(2))
   const isAddr = /^0x[0-9a-fA-F]{40}$/.test(ix.payee)
 
-  // Real settlement when the payee is an Arc address and a signer is configured.
+  // On-chain policy vault: the chain enforces the policy. Agent-initiated
+  // (auto-approved) payments go through pay(); human-approved ones through
+  // ownerPay() (override). A policy revert is an authoritative rejection; an
+  // infra error falls through to direct settlement below.
+  if (isAddr && agent?.vaultAddress) {
+    const humanApproved = ix.status === 'approved'
+    const res = humanApproved
+      ? await policyOwnerPay(agent.vaultAddress, ix.payee, total)
+      : await policyPay(agent.vaultAddress, ix.payee, total)
+    if (res.executed) {
+      ix.status = 'executed_onchain'
+      ix.txHash = res.txHash
+      ix.explorerUrl = res.explorerUrl
+      ix.enforcedBy = 'onchain-vault'
+      ix.policyNote = `Settled ${fmt(total)} USDC through the on-chain policy vault (${humanApproved ? 'human override' : 'agent, within policy'}).`
+      pushActivity(agent, `On-chain vault settled ${fmt(total)} USDC to ${short(ix.payee)} (tx ${short(res.txHash)})`)
+      save(state)
+      return ix
+    }
+    if (res.reverted && VAULT_POLICY_ERRORS.has(res.reason)) {
+      ix.status = 'pending_approval'
+      ix.enforcedBy = 'onchain-vault'
+      ix.policyNote = `On-chain policy vault rejected this (${res.reason}); a human must intervene.`
+      pushActivity(agent, `On-chain vault rejected ${fmt(total)} USDC to ${short(ix.payee)}: ${res.reason}`)
+      save(state)
+      return ix
+    }
+    // Not a policy revert (no key / infra error) — fall through to direct settlement.
+  }
+
+  // Direct settlement when the payee is an Arc address and a signer is configured.
   if (isAddr) {
     const res = await payUsdcOnchain(ix.payee, total)
     if (res.executed) {
       ix.status = 'executed_onchain'
       ix.txHash = res.txHash
       ix.explorerUrl = res.explorerUrl
-      ix.policyNote = `Settled ${total < 0.01 ? total.toFixed(4) : total.toFixed(2)} USDC on Arc.`
+      ix.enforcedBy = 'server'
+      ix.policyNote = `Settled ${fmt(total)} USDC on Arc.`
       if (agent) pushActivity(agent, `Settled ${total.toFixed(4)} USDC on Arc to ${short(ix.payee)} (tx ${short(res.txHash)})`)
       save(state)
       return ix

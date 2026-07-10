@@ -36,6 +36,8 @@ import {
   listPlatformAgents,
   marketplace,
   updateAgentPermissions,
+  provisionAgentVault,
+  getAgentVault,
   type InstructionType,
 } from './platform.js'
 import { issueToken, verifyToken } from './auth.js'
@@ -323,6 +325,24 @@ const server = http.createServer(async (req, res) => {
     const body = (await readBody(req).catch(() => null)) as { agentId?: string } | null
     if (!body?.agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
     const r = await anchorAgentOnchain(body.agentId, caller ?? undefined)
+    if ('error' in r && typeof r.error === 'string') { sendJson(res, errStatus(r.error), r); return }
+    sendJson(res, 200, r)
+    return
+  }
+  // Provision an on-chain policy vault for an agent (deploy + optional funding, env-gated)
+  if (req.method === 'POST' && url.pathname === '/api/agents/vault') {
+    const body = (await readBody(req).catch(() => null)) as { agentId?: string; fundUsd?: number } | null
+    if (!body?.agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
+    const r = await provisionAgentVault(body.agentId, { fundUsd: body.fundUsd, caller: caller ?? undefined })
+    if ('error' in r && typeof r.error === 'string') { sendJson(res, errStatus(r.error), r); return }
+    sendJson(res, 200, r)
+    return
+  }
+  // Read an agent's live on-chain vault policy + balance
+  if (req.method === 'GET' && url.pathname === '/api/agents/vault') {
+    const agentId = url.searchParams.get('agentId') ?? ''
+    if (!agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
+    const r = await getAgentVault(agentId)
     if ('error' in r && typeof r.error === 'string') { sendJson(res, errStatus(r.error), r); return }
     sendJson(res, 200, r)
     return

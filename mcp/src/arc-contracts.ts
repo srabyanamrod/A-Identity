@@ -7,6 +7,7 @@
  * human-on-the-loop: nothing broadcasts unless a key is present and the caller
  * explicitly asks to execute. Gas is paid in USDC (~0.006 USDC per tx).
  */
+import { AgentSpendPolicyAbi, AgentSpendPolicyBytecode } from './contracts/AgentSpendPolicy.js'
 
 export const ARC_RPC = 'https://rpc.testnet.arc.network'
 export const ARC_EXPLORER = 'https://testnet.arcscan.app'
@@ -237,4 +238,135 @@ export async function payUsdcOnchain(
   })
   await client.waitForTransactionReceipt({ hash })
   return { executed: true, txHash: hash, explorerUrl: tx(hash) }
+}
+
+// ── on-chain spend policy vault (AgentSpendPolicy) ───────────────────────────
+//
+// A per-agent USDC wallet whose spend policy is enforced by the contract, not by
+// our server: an agent `pay()` that breaks the daily cap / auto-approve ceiling /
+// allowlist / freeze reverts on Arc, verifiably. The server engine stays as the
+// pre-check and fallback; this is the on-chain source of truth. 6-decimal units.
+
+const NO_KEY = 'No ARC_SIGNER_KEY set. Fund a wallet and export the key to broadcast on-chain.'
+const usdcUnits = (amountUsd: number) => BigInt(Math.round(amountUsd * 1e6))
+const fromUnits = (v: bigint) => Number(v) / 1e6
+const addressUrl = (a: string) => `${ARC_EXPLORER}/address/${a}`
+
+type VaultDeployed = { executed: true; vault: string; txHash: string; explorerUrl: string }
+type VaultTx = { executed: true; txHash: string; explorerUrl: string }
+type VaultReverted = { executed: false; reverted: true; reason: string }
+type VaultNoKey = { executed: false; reverted: false; reason: string }
+type VaultResult = VaultTx | VaultReverted | VaultNoKey
+
+/** Decode a viem contract revert into the Solidity error name (e.g. "AboveAutoApprove"). */
+async function revertReason(err: unknown): Promise<string> {
+  const { BaseError, ContractFunctionRevertedError } = await import('viem')
+  if (err instanceof BaseError) {
+    const rev = err.walk((e) => e instanceof ContractFunctionRevertedError)
+    if (rev instanceof ContractFunctionRevertedError) {
+      return rev.data?.errorName ?? rev.reason ?? rev.shortMessage
+    }
+    return err.shortMessage
+  }
+  return err instanceof Error ? err.message : String(err)
+}
+
+/**
+ * Deploy an AgentSpendPolicy vault for an agent. owner/operator default to the
+ * signer account when omitted (single-key testnet demo). Returns the deployed
+ * vault address, or a prepared note when no signer key is present.
+ */
+export async function deployPolicyVault(
+  input: { owner?: string; operator?: string; dailyCapUsd: number; autoApproveUsd: number },
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<VaultDeployed | VaultNoKey> {
+  const signer = await walletClient(env)
+  if (!signer) return { executed: false, reverted: false, reason: NO_KEY }
+  const owner = (input.owner ?? signer.account.address) as `0x${string}`
+  const operator = (input.operator ?? signer.account.address) as `0x${string}`
+  const client = await publicClient()
+  const hash = await signer.client.deployContract({
+    abi: AgentSpendPolicyAbi,
+    bytecode: AgentSpendPolicyBytecode,
+    args: [owner, operator, CONTRACTS.usdc, usdcUnits(input.dailyCapUsd), usdcUnits(input.autoApproveUsd)],
+  })
+  const receipt = await client.waitForTransactionReceipt({ hash })
+  return { executed: true, vault: receipt.contractAddress as string, txHash: hash, explorerUrl: tx(hash) }
+}
+
+/** Simulate then broadcast a vault write; on a policy reject, return the on-chain
+ * revert reason without spending gas. Shared by pay/ownerPay/setters. */
+async function vaultWrite(
+  vault: string,
+  functionName: string,
+  args: readonly unknown[],
+  env: NodeJS.ProcessEnv,
+): Promise<VaultResult> {
+  const signer = await walletClient(env)
+  if (!signer) return { executed: false, reverted: false, reason: NO_KEY }
+  const client = await publicClient()
+  try {
+    const { request } = await client.simulateContract({
+      address: vault as `0x${string}`,
+      abi: AgentSpendPolicyAbi,
+      functionName: functionName as never,
+      args: args as never,
+      account: signer.account,
+    })
+    const hash = await signer.client.writeContract(request as never)
+    await client.waitForTransactionReceipt({ hash })
+    return { executed: true, txHash: hash, explorerUrl: tx(hash) }
+  } catch (err) {
+    return { executed: false, reverted: true, reason: await revertReason(err) }
+  }
+}
+
+/** Agent-initiated payment, enforced on-chain. Reverts (with reason) if a gate fails. */
+export const policyPay = (vault: string, to: string, amountUsd: number, env: NodeJS.ProcessEnv = process.env) =>
+  vaultWrite(vault, 'pay', [to as `0x${string}`, usdcUnits(amountUsd)], env)
+
+/** Owner settles a human-approved payment (bypasses ceiling/allowlist/freeze). */
+export const policyOwnerPay = (vault: string, to: string, amountUsd: number, env: NodeJS.ProcessEnv = process.env) =>
+  vaultWrite(vault, 'ownerPay', [to as `0x${string}`, usdcUnits(amountUsd)], env)
+
+/** Owner updates the on-chain policy (cap, auto-approve ceiling, allowlist flag). */
+export const policySetPolicy = (
+  vault: string,
+  input: { dailyCapUsd: number; autoApproveUsd: number; allowlistEnabled: boolean },
+  env: NodeJS.ProcessEnv = process.env,
+) => vaultWrite(vault, 'setPolicy', [usdcUnits(input.dailyCapUsd), usdcUnits(input.autoApproveUsd), input.allowlistEnabled], env)
+
+/** Owner freezes/unfreezes all agent spending. */
+export const policySetFrozen = (vault: string, frozen: boolean, env: NodeJS.ProcessEnv = process.env) =>
+  vaultWrite(vault, 'setFrozen', [frozen], env)
+
+/** Owner adds/removes a payee from the on-chain allowlist. */
+export const policySetAllowed = (vault: string, payee: string, ok: boolean, env: NodeJS.ProcessEnv = process.env) =>
+  vaultWrite(vault, 'setAllowed', [payee as `0x${string}`, ok], env)
+
+/** Owner withdraws USDC from the vault. */
+export const policyWithdraw = (vault: string, to: string, amountUsd: number, env: NodeJS.ProcessEnv = process.env) =>
+  vaultWrite(vault, 'withdraw', [to as `0x${string}`, usdcUnits(amountUsd)], env)
+
+/** Read the live on-chain policy + balance of a vault (no key needed). */
+export async function readPolicyVault(vault: string) {
+  const client = await publicClient()
+  const read = (functionName: string, args: readonly unknown[] = []) =>
+    client.readContract({ address: vault as `0x${string}`, abi: AgentSpendPolicyAbi, functionName: functionName as never, args: args as never })
+  const [owner, operator, dailyCap, autoApproveMax, frozen, allowlistEnabled, spentToday, balance] = await Promise.all([
+    read('owner'), read('operator'), read('dailyCap'), read('autoApproveMax'),
+    read('frozen'), read('allowlistEnabled'), read('spentToday'), read('balance'),
+  ])
+  return {
+    vault,
+    owner: owner as string,
+    operator: operator as string,
+    dailyCapUsd: fromUnits(dailyCap as bigint),
+    autoApproveUsd: fromUnits(autoApproveMax as bigint),
+    frozen: frozen as boolean,
+    allowlistEnabled: allowlistEnabled as boolean,
+    spentTodayUsd: fromUnits(spentToday as bigint),
+    balanceUsd: fromUnits(balance as bigint),
+    explorer: addressUrl(vault),
+  }
 }

@@ -4,6 +4,8 @@ import {
   AlertTriangle,
   Check,
   CreditCard,
+  ExternalLink,
+  Link2,
   LogOut,
   PlayCircle,
   Save,
@@ -13,6 +15,7 @@ import {
 import { useAuth, authHeaders } from '../../store/auth'
 
 const MCP_BASE = (import.meta.env.VITE_MCP_URL as string | undefined) ?? 'http://localhost:3399'
+const short = (a: string) => (a.length > 14 ? `${a.slice(0, 8)}...${a.slice(-4)}` : a)
 
 type Permissions = {
   dailyCapUsd: number
@@ -283,6 +286,9 @@ export default function Permissions() {
             <span className="text-xs text-ink/45">Applies to every new action immediately.</span>
           </div>
 
+          {/* On-chain policy vault — deploy this policy as a smart contract on Arc */}
+          <VaultPanel agentId={agentId} />
+
           {/* Try a payment (live policy tester) */}
           <PolicyTester agentId={agentId} onSpent={() => loadPolicy(agentId)} />
         </>
@@ -442,5 +448,145 @@ function PolicyTester({ agentId, onSpent }: { agentId: string; onSpent: () => vo
         </div>
       )}
     </section>
+  )
+}
+
+type VaultState = {
+  vaultAddress: string | null
+  dailyCapUsd?: number
+  autoApproveUsd?: number
+  frozen?: boolean
+  spentTodayUsd?: number
+  balanceUsd?: number
+  explorer?: string
+  error?: string
+}
+
+/**
+ * Deploy the agent's policy as a real smart contract on Arc. Once live, address
+ * payments settle THROUGH the vault — a payment over the cap or auto-approve line
+ * reverts on-chain, not just on our server. Programmable money enforcing itself.
+ */
+function VaultPanel({ agentId }: { agentId: string }) {
+  const [vault, setVault] = useState<VaultState | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [fund, setFund] = useState('2')
+  const [err, setErr] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`${MCP_BASE}/api/agents/vault?agentId=${agentId}`, { signal: AbortSignal.timeout(8000) })
+      setVault((await res.json()) as VaultState)
+      setErr(null)
+    } catch {
+      setErr('Could not load vault status.')
+    } finally {
+      setLoading(false)
+    }
+  }, [agentId])
+
+  useEffect(() => {
+    if (agentId) load()
+  }, [agentId, load])
+
+  const provision = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      const res = await fetch(`${MCP_BASE}/api/agents/vault`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ agentId, fundUsd: Number(fund) || 0 }),
+      })
+      const j = (await res.json()) as { error?: string }
+      if (j.error) setErr(j.error)
+      await load()
+    } catch {
+      setErr('Provision failed. The backend needs a funded ARC_SIGNER_KEY.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const has = !!vault?.vaultAddress
+
+  return (
+    <section className="mt-4 rounded-2xl border border-[#7342E2]/25 bg-[#7342E2]/[0.04] p-6">
+      <div className="mb-1 flex items-center gap-2">
+        <Link2 size={16} className="text-[#7342E2]" />
+        <h3 className="font-semibold text-ink">On-chain policy vault</h3>
+        {has && (
+          <span className="ml-1 rounded-full bg-[#7342E2]/10 px-2 py-0.5 text-[10px] font-bold text-[#7342E2]">
+            Live on Arc
+          </span>
+        )}
+      </div>
+      <p className="mb-4 text-xs text-ink/55">
+        Deploy this policy as a smart contract on Arc. Once live, the agent's payments to an Arc
+        address settle <b>through the vault</b> — anything over the cap or auto-approve line
+        reverts on-chain, not just on our server. Programmable money enforcing itself.
+      </p>
+
+      {loading ? (
+        <div className="text-xs text-ink/45">Loading vault status...</div>
+      ) : has ? (
+        <div className="space-y-3">
+          <a
+            href={vault!.explorer}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 font-mono text-xs font-semibold text-[#7342E2] hover:underline"
+          >
+            {short(vault!.vaultAddress!)} <ExternalLink size={11} />
+          </a>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat label="Daily cap" value={`$${vault!.dailyCapUsd}`} />
+            <Stat label="Auto-approve" value={`$${vault!.autoApproveUsd}`} />
+            <Stat label="Spent today" value={`$${vault!.spentTodayUsd?.toFixed(2) ?? '0.00'}`} />
+            <Stat label="Vault balance" value={`$${vault!.balanceUsd?.toFixed(2) ?? '0.00'}`} />
+          </div>
+          {vault!.frozen && (
+            <div className="text-xs font-semibold text-red-600">Frozen on-chain — the agent cannot spend.</div>
+          )}
+          <p className="text-[11px] text-ink/45">
+            The contract enforces the same limits set above. Address payments now settle through it.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="text-[11px] font-semibold text-ink/50">Fund with (USDC)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={fund}
+              onChange={(e) => setFund(e.target.value)}
+              className="mt-1 w-28 rounded-xl border border-ink/10 bg-white px-3 py-2 text-sm outline-none focus:border-[#7342E2]"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={provision}
+            disabled={busy}
+            className="rounded-full bg-[#7342E2] px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:opacity-50"
+          >
+            {busy ? 'Deploying on Arc...' : 'Provision on-chain vault'}
+          </button>
+        </div>
+      )}
+      {err && <div className="mt-3 text-xs text-red-600">{err}</div>}
+    </section>
+  )
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-ink/8 bg-white px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-ink/40">{label}</div>
+      <div className="mt-0.5 text-sm font-bold text-ink">{value}</div>
+    </div>
   )
 }
