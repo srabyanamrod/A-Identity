@@ -731,6 +731,20 @@ export function approveInstruction(ixId: string, caller?: string): Instruction |
 }
 
 /**
+ * Resolve an instruction payee to a real Arc address to settle to, or null.
+ *  - a 0x… address → itself
+ *  - `agent://<idOrName>` (or a bare agent id/name) → THAT agent's wallet address,
+ *    so agent-to-agent payments settle on-chain instead of falling back to simulated.
+ */
+function resolvePayeeAddress(payee: string): string | null {
+  if (/^0x[0-9a-fA-F]{40}$/.test(payee)) return payee
+  const key = payee.replace(/^agent:\/\//i, '').trim()
+  if (!key) return null
+  const target = state.agents.find((a) => a.id === key || a.name.toLowerCase() === key.toLowerCase())
+  return target?.walletAddress && /^0x[0-9a-fA-F]{40}$/.test(target.walletAddress) ? target.walletAddress : null
+}
+
+/**
  * Execute an approved or auto-approved instruction. When the agent has an
  * on-chain policy vault, address payments settle THROUGH it — the vault enforces
  * the daily cap / auto-approve ceiling / freeze on Arc, so a disallowed payment
@@ -748,24 +762,26 @@ export async function executeInstruction(ixId: string, caller?: string): Promise
   if (agent && !ownsAgent(agent, caller)) return { error: 'Forbidden: not the agent owner' }
   const total = ix.amountUsd * ix.count
   const fmt = (n: number) => (n < 0.01 ? n.toFixed(4) : n.toFixed(2))
-  const isAddr = /^0x[0-9a-fA-F]{40}$/.test(ix.payee)
+  // Where this actually settles on-chain: a 0x… payee, or an agent:// payee
+  // resolved to that agent's wallet. null → nothing to send to → simulated.
+  const settleTo = resolvePayeeAddress(ix.payee)
 
   // On-chain policy vault: the chain enforces the policy. Agent-initiated
   // (auto-approved) payments go through pay(); human-approved ones through
   // ownerPay() (override). A policy revert is an authoritative rejection; an
   // infra error falls through to direct settlement below.
-  if (isAddr && agent?.vaultAddress) {
+  if (settleTo && agent?.vaultAddress) {
     const humanApproved = ix.status === 'approved'
     const res = humanApproved
-      ? await policyOwnerPay(agent.vaultAddress, ix.payee, total)
-      : await policyPay(agent.vaultAddress, ix.payee, total)
+      ? await policyOwnerPay(agent.vaultAddress, settleTo, total)
+      : await policyPay(agent.vaultAddress, settleTo, total)
     if (res.executed) {
       ix.status = 'executed_onchain'
       ix.txHash = res.txHash
       ix.explorerUrl = res.explorerUrl
       ix.enforcedBy = 'onchain-vault'
       ix.policyNote = `Settled ${fmt(total)} USDC through the on-chain policy vault (${humanApproved ? 'human override' : 'agent, within policy'}).`
-      pushActivity(agent, `On-chain vault settled ${fmt(total)} USDC to ${short(ix.payee)} (tx ${short(res.txHash)})`)
+      pushActivity(agent, `On-chain vault settled ${fmt(total)} USDC to ${short(settleTo)} (tx ${short(res.txHash)})`)
       save(state)
       return ix
     }
@@ -773,7 +789,7 @@ export async function executeInstruction(ixId: string, caller?: string): Promise
       ix.status = 'pending_approval'
       ix.enforcedBy = 'onchain-vault'
       ix.policyNote = `On-chain policy vault rejected this (${res.reason}); a human must intervene.`
-      pushActivity(agent, `On-chain vault rejected ${fmt(total)} USDC to ${short(ix.payee)}: ${res.reason}`)
+      pushActivity(agent, `On-chain vault rejected ${fmt(total)} USDC to ${short(settleTo)}: ${res.reason}`)
       save(state)
       return ix
     }
@@ -786,15 +802,15 @@ export async function executeInstruction(ixId: string, caller?: string): Promise
   // vault revert); no creds / infra / timeout falls through to direct settlement.
   // Vault-first by design: an agent with a vault settles there; this runs when the
   // agent has a Circle wallet (and, as a resilience bonus, if the vault infra-failed).
-  if (isAddr && agent?.circleWalletId) {
-    const res = await circlePay(agent.circleWalletId, ix.payee, total)
+  if (settleTo && agent?.circleWalletId) {
+    const res = await circlePay(agent.circleWalletId, settleTo, total)
     if (res.executed) {
       ix.status = 'executed_onchain'
       ix.txHash = res.txHash
       ix.explorerUrl = res.explorerUrl
       ix.enforcedBy = 'circle-agent-stack'
       ix.policyNote = `Settled ${fmt(total)} USDC through the Circle Agent Wallet (hosted policy screened + approved).`
-      pushActivity(agent, `Circle Agent Wallet settled ${fmt(total)} USDC to ${short(ix.payee)} (tx ${short(res.txHash)})`)
+      pushActivity(agent, `Circle Agent Wallet settled ${fmt(total)} USDC to ${short(settleTo)} (tx ${short(res.txHash)})`)
       save(state)
       return ix
     }
@@ -802,23 +818,23 @@ export async function executeInstruction(ixId: string, caller?: string): Promise
       ix.status = 'pending_approval'
       ix.enforcedBy = 'circle-agent-stack'
       ix.policyNote = `Circle's hosted policy rejected this (${res.reason}); a human must intervene.`
-      pushActivity(agent, `Circle Agent Wallet rejected ${fmt(total)} USDC to ${short(ix.payee)}: ${res.reason}`)
+      pushActivity(agent, `Circle Agent Wallet rejected ${fmt(total)} USDC to ${short(settleTo)}: ${res.reason}`)
       save(state)
       return ix
     }
     // Not a policy rejection (no creds / infra) — fall through to direct settlement.
   }
 
-  // Direct settlement when the payee is an Arc address and a signer is configured.
-  if (isAddr) {
-    const res = await payUsdcOnchain(ix.payee, total)
+  // Direct settlement when we have a resolved Arc address and a signer is configured.
+  if (settleTo) {
+    const res = await payUsdcOnchain(settleTo, total)
     if (res.executed) {
       ix.status = 'executed_onchain'
       ix.txHash = res.txHash
       ix.explorerUrl = res.explorerUrl
       ix.enforcedBy = 'server'
       ix.policyNote = `Settled ${fmt(total)} USDC on Arc.`
-      if (agent) pushActivity(agent, `Settled ${total.toFixed(4)} USDC on Arc to ${short(ix.payee)} (tx ${short(res.txHash)})`)
+      if (agent) pushActivity(agent, `Settled ${total.toFixed(4)} USDC on Arc to ${short(settleTo)} (tx ${short(res.txHash)})`)
       save(state)
       return ix
     }
@@ -826,7 +842,7 @@ export async function executeInstruction(ixId: string, caller?: string): Promise
   }
 
   ix.status = 'executed_simulated'
-  if (!isAddr) ix.policyNote = 'Executed as a testnet simulation (payee is not an Arc address).'
+  if (!settleTo) ix.policyNote = 'Executed as a testnet simulation (payee has no Arc address to settle to).'
   if (agent) pushActivity(agent, `Executed (simulated) ${ix.type} of $${total.toFixed(2)}`)
   save(state)
   return ix

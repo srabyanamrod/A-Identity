@@ -121,7 +121,8 @@ export default function Settlements() {
       <h2 className="text-2xl font-bold tracking-tight">Settlements</h2>
       <p className="mt-1 text-sm text-ink/55">
         Every payment your agent makes runs through the policy engine, then settles in real
-        USDC on Arc. Payments to an Arc address (0x...) move real testnet funds.
+        USDC on Arc. Pay a 0x… address or another agent (agent://&lt;agentId&gt;) — both move real
+        testnet funds.
       </p>
 
       {error && (
@@ -156,7 +157,7 @@ export default function Settlements() {
               <input
                 value={payee}
                 onChange={(e) => setPayee(e.target.value)}
-                placeholder="Payee: 0x... Arc address (settles for real)"
+                placeholder="Payee: 0x… address or agent://<agentId> (both settle for real)"
                 className="rounded-xl border border-ink/10 bg-cream/40 px-3 py-2.5 font-mono text-xs outline-none focus:border-accent"
               />
               <div className="flex gap-2">

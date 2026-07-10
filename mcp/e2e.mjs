@@ -238,6 +238,25 @@ async function main() {
     check('vault provision returns a prepared note without a signer key', !vaultRes.json?.vaultAddress, JSON.stringify(vaultRes.json || {}).slice(0, 70))
   }
 
+  // ── J3. agent:// payee resolution ─────────────────────────────────────────────
+  phase('J3. agent:// payee resolves to that agent\'s wallet')
+  const payeeWallet = privateKeyToAccount(generatePrivateKey()).address
+  const payeeAgent = (await api('POST', '/api/agents', {
+    token: alice,
+    body: { name: `E2E Payee ${Date.now()}`, category: 'Data', capabilities: ['Data'], walletAddress: payeeWallet },
+  })).json?.agent?.id
+  const aiIx = await api('POST', '/api/instructions', { token: alice, body: { agentId: payer, type: 'payment', amountUsd: 0.01, payee: `agent://${payeeAgent}` } })
+  const aiExec = await api('POST', '/api/instructions/execute', { token: alice, body: { id: aiIx.json?.id } })
+  // Resolved → settles on-chain with a key, else signer-gated ('No signer configured') — NOT the unresolved path.
+  check('agent:// payee resolves + settles (on-chain with a key, else signer-gated)',
+    aiExec.json?.status === 'executed_onchain' || /No signer configured/.test(aiExec.json?.policyNote || ''),
+    `${aiExec.json?.status} / ${aiExec.json?.policyNote}`)
+  const badIx = await api('POST', '/api/instructions', { token: alice, body: { agentId: payer, type: 'payment', amountUsd: 0.01, payee: 'agent://no-such-agent-xyz' } })
+  const badExec = await api('POST', '/api/instructions/execute', { token: alice, body: { id: badIx.json?.id } })
+  check('unresolvable payee stays simulated (no address to settle to)',
+    badExec.json?.status === 'executed_simulated' && /no Arc address/.test(badExec.json?.policyNote || ''),
+    `${badExec.json?.status} / ${badExec.json?.policyNote}`)
+
   // ── K. On-chain identity ──────────────────────────────────────────────────────
   phase('K. On-chain identity (ERC-8004)')
   const anchor = await api('POST', '/api/agents/anchor', { token: alice, body: { agentId: payer } })
