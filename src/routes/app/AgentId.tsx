@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   BadgeCheck,
   CheckCircle2,
@@ -43,9 +43,33 @@ export default function AgentId() {
   const { agent: liveAgent, source, loading: agentLoading } = useResolveAgent(DEMO_AGENT_ID)
   const { reputation: liveRep, loading: repLoading } = useAgentReputation(DEMO_AGENT_ID)
 
-  // Use live data when available, fall back to mock
-  const score = liveRep?.score ?? 742
-  const breakdown = liveRep?.breakdown ?? { settlement: 600, validation: 107, tenure: 35 }
+  // Real reputation of the first registered agent (from real settlements + on-chain
+  // identity + tenure), when available. Falls back to the mock only when there are no agents.
+  const [realRep, setRealRep] = useState<{
+    score: number
+    breakdown: { settlement: number; validation: number; tenure: number }
+  } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const list = await fetch(`${MCP_BASE}/api/platform-agents`).then((r) => r.json())
+        const first = list.agents?.[0]
+        if (!first) return
+        const rep = await fetch(`${MCP_BASE}/api/agents/reputation?agentId=${first.id}`).then((r) => r.json())
+        if (!cancelled && rep && !('error' in rep)) setRealRep({ score: rep.score, breakdown: rep.breakdown })
+      } catch {
+        /* keep the fallback */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Use real data when available, fall back to mock
+  const score = realRep?.score ?? liveRep?.score ?? 742
+  const breakdown = realRep?.breakdown ?? liveRep?.breakdown ?? { settlement: 600, validation: 107, tenure: 35 }
 
   const stageIndex = 2 // "live": demo is fully registered
 

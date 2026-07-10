@@ -371,6 +371,38 @@ export function agentPolicy(agentId: string) {
   }
 }
 
+// ── reputation (from real activity) ─────────────────────────────────────────────
+
+/**
+ * Reputation (0-1000) computed from the agent's REAL signals, deterministically:
+ *  - settlement: real on-chain USDC settlements (diminishing returns), + a credit
+ *    for holding a verified on-chain ERC-8004 identity
+ *  - validation: share of clean (settled vs rejected) actions
+ *  - tenure: days on the platform
+ * Every input is real and verifiable (settlements carry tx hashes) — no mock history.
+ */
+function repOf(agent: PlatformAgent) {
+  const ixs = state.instructions.filter((i) => i.agentId === agent.id)
+  const settled = ixs.filter((i) => i.status === 'executed_onchain')
+  const rejected = ixs.filter((i) => i.status === 'rejected').length
+  const settledCount = settled.length
+  const settledUsd = settled.reduce((s, i) => s + i.amountUsd * i.count, 0)
+  const total = settledCount + rejected
+  const idBonus = agent.onchain === 'registered' ? 60 : 0
+  const settlement = Math.min(600, Math.round(600 * (1 - Math.exp(-settledCount / 6))) + idBonus)
+  const validation = total === 0 ? 0 : Math.round(240 * (settledCount / total))
+  const days = Math.max(0, Math.floor((Date.now() - new Date(agent.createdAt).getTime()) / 86_400_000))
+  const tenure = Math.min(160, Math.round(days / 2))
+  const score = Math.max(0, Math.min(1000, settlement + validation + tenure))
+  return { score, breakdown: { settlement, validation, tenure }, settledOnchain: settledCount, settledUsd }
+}
+
+export function agentReputation(agentId: string) {
+  const agent = state.agents.find((a) => a.id === agentId)
+  if (!agent) return { error: 'Unknown agent' }
+  return { agentId: agent.id, name: agent.name, onchain: agent.onchain, ...repOf(agent), computedAt: new Date().toISOString() }
+}
+
 // ── instructions ──────────────────────────────────────────────────────────────
 
 export function createInstruction(input: {
@@ -526,6 +558,7 @@ export function marketplace(viewer?: string) {
       onchainTx: a.onchainTx,
       onchainExplorer: a.onchainExplorer,
       onchainAgentId: a.onchainAgentId,
+      reputation: repOf(a),
       walletAddress: a.walletAddress,
       followers: a.followers.length,
       followedByViewer: viewer ? a.followers.includes(viewer) : false,

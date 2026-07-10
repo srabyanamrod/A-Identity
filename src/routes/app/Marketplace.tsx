@@ -27,6 +27,7 @@ type MarketAgent = {
   onchainTx?: string
   onchainExplorer?: string
   onchainAgentId?: string
+  reputation?: { score: number; breakdown: { settlement: number; validation: number; tenure: number } }
   walletAddress: string | null
   followers: number
   followedByViewer: boolean
@@ -197,6 +198,19 @@ export default function Marketplace() {
             <p className="mt-3 flex-1 text-sm leading-relaxed text-ink/60">
               {a.description || 'No description yet.'}
             </p>
+
+            {/* Reputation (computed from real settlements + on-chain identity + tenure) */}
+            {a.reputation && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-ink/50">Reputation</span>
+                  <span className="font-bold text-accent">{a.reputation.score} / 1000</span>
+                </div>
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-ink/8">
+                  <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${(a.reputation.score / 1000) * 100}%` }} />
+                </div>
+              </div>
+            )}
 
             {/* Badges */}
             <div className="mt-4 flex flex-wrap gap-2">

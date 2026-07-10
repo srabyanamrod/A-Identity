@@ -20,6 +20,7 @@ import { getCircleStatus } from './circle.js'
 import { readArcContracts, registerAgentOnchain, createJobOnchain } from './arc-contracts.js'
 import {
   agentPolicy,
+  agentReputation,
   anchorAgentOnchain,
   approveInstruction,
   assignWallet,
@@ -295,6 +296,14 @@ const server = http.createServer(async (req, res) => {
     const r = await anchorAgentOnchain(body.agentId, caller ?? undefined)
     if ('error' in r && typeof r.error === 'string') { sendJson(res, errStatus(r.error), r); return }
     sendJson(res, 200, r)
+    return
+  }
+  // Reputation for one agent, computed from real activity
+  if (req.method === 'GET' && url.pathname === '/api/agents/reputation') {
+    const agentId = url.searchParams.get('agentId') ?? ''
+    if (!agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
+    const r = agentReputation(agentId)
+    sendJson(res, 'error' in r ? 404 : 200, r)
     return
   }
   // Live policy for one agent (limits + today's spend + reset time)
