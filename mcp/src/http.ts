@@ -36,9 +36,13 @@ import {
   type InstructionType,
 } from './platform.js'
 import { issueToken, verifyToken } from './auth.js'
+import { randomBytes } from 'node:crypto'
 
 // Render/most hosts inject PORT; fall back to our own var, then the local default.
 const PORT = Number(process.env.PORT ?? process.env.A_IDENTITY_HTTP_PORT ?? 3399)
+
+/** Short-lived sign-in nonces, keyed by lowercase wallet address (in-memory). */
+const nonces = new Map<string, string>()
 
 function readBody(req: http.IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -92,8 +96,54 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  // ── auth: wallet nonce (public) — start Sign-In with Ethereum ─────────────────
+  if (req.method === 'POST' && url.pathname === '/api/auth/nonce') {
+    const body = (await readBody(req).catch(() => null)) as { address?: string } | null
+    if (!body?.address || !/^0x[0-9a-fA-F]{40}$/.test(body.address)) {
+      sendJson(res, 400, { error: 'valid address required' }); return
+    }
+    const addr = body.address.toLowerCase()
+    const nonce = randomBytes(16).toString('hex')
+    nonces.set(addr, nonce)
+    const message = `A-Identity: sign in with your wallet.\n\nAddress: ${addr}\nNonce: ${nonce}`
+    sendJson(res, 200, { message })
+    return
+  }
+
+  // ── auth: wallet verify (public) — finish SIWE, issue a session token ─────────
+  if (req.method === 'POST' && url.pathname === '/api/auth/verify') {
+    const body = (await readBody(req).catch(() => null)) as
+      | { address?: string; message?: string; signature?: string }
+      | null
+    if (!body?.address || !body?.message || !body?.signature) {
+      sendJson(res, 400, { error: 'address, message, signature required' }); return
+    }
+    const addr = body.address.toLowerCase()
+    const nonce = nonces.get(addr)
+    if (!nonce || !body.message.includes(nonce)) {
+      sendJson(res, 401, { error: 'stale or missing nonce; request a new one' }); return
+    }
+    try {
+      const { verifyMessage } = await import('viem')
+      const ok = await verifyMessage({
+        address: addr as `0x${string}`,
+        message: body.message,
+        signature: body.signature as `0x${string}`,
+      })
+      if (!ok) { sendJson(res, 401, { error: 'signature does not match address' }); return }
+    } catch {
+      sendJson(res, 401, { error: 'signature verification failed' }); return
+    }
+    nonces.delete(addr)
+    sendJson(res, 200, {
+      token: issueToken(addr),
+      user: { email: addr, name: `${addr.slice(0, 6)}...${addr.slice(-4)}` },
+    })
+    return
+  }
+
   // Guard: every other mutating /api endpoint requires a valid session token.
-  if (req.method === 'POST' && url.pathname.startsWith('/api/') && !caller) {
+  if (req.method === 'POST' && url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/auth/') && !caller) {
     sendJson(res, 401, { error: 'Authentication required. Log in first.' })
     return
   }

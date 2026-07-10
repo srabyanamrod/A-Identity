@@ -18,6 +18,8 @@ type AuthState = {
    * identity verification is KYA, handled separately.
    */
   login: (email: string, name?: string) => Promise<void>
+  /** Real auth: Sign-In with Ethereum — prove wallet ownership by signing a nonce. */
+  loginWallet: () => Promise<void>
   logout: () => void
 }
 
@@ -42,6 +44,35 @@ export const useAuth = create<AuthState>()(
           // Backend unreachable — fall through to a local-only session (no token).
         }
         set({ user: { email, name: name?.trim() || email.split('@')[0] }, token: null })
+      },
+      loginWallet: async () => {
+        const eth = (
+          window as unknown as {
+            ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> }
+          }
+        ).ethereum
+        if (!eth) throw new Error('No wallet found. Install MetaMask.')
+        const accounts = (await eth.request({ method: 'eth_requestAccounts' })) as string[]
+        const address = accounts?.[0]
+        if (!address) throw new Error('No account selected.')
+        const nres = await fetch(`${MCP_BASE}/api/auth/nonce`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address }),
+        })
+        const { message } = (await nres.json()) as { message: string }
+        const signature = (await eth.request({ method: 'personal_sign', params: [message, address] })) as string
+        const vres = await fetch(`${MCP_BASE}/api/auth/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address, message, signature }),
+        })
+        if (!vres.ok) {
+          const e = (await vres.json().catch(() => ({}))) as { error?: string }
+          throw new Error(e.error ?? 'Wallet sign-in failed.')
+        }
+        const data = (await vres.json()) as { token: string; user: User }
+        set({ user: data.user, token: data.token })
       },
       logout: () => set({ user: null, token: null }),
     }),

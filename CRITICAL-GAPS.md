@@ -25,7 +25,7 @@ Live: frontend https://a-identity.vercel.app · backend https://a-identity-backe
 
 | # | Gap | Status |
 |---|-----|--------|
-| 1 | No backend auth / approval gate unprotected | ✅ **CLOSED** — session token required on all writes (401); agent-scoped actions (pay/approve/limits/anchor) restricted to the owner (403) |
+| 1 | No backend auth / approval gate unprotected | ✅ **CLOSED** — real auth via Sign-In with Ethereum (wallet signature, no password); session token required on all writes (401); agent-scoped actions restricted to the owner (403). Email login kept as a guest fallback |
 | 2 | Private key server-side + rendered to DOM | ❌ open |
 | 3 | No KYA verification | ❌ open |
 | 4 | Reputation is mock (not on-chain) | ❌ open |

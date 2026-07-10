@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowRight, Lock, Mail, User } from 'lucide-react'
+import { ArrowRight, Lock, Mail, User, Wallet } from 'lucide-react'
 import { motion } from 'framer-motion'
 import Logo from './Logo'
 import { useAuth } from '../store/auth'
@@ -38,15 +38,31 @@ export default function AuthScreen({ mode }: AuthScreenProps) {
   const copy = COPY[mode]
   const navigate = useNavigate()
   const login = useAuth((s) => s.login)
+  const loginWallet = useAuth((s) => s.loginWallet)
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [walletBusy, setWalletBusy] = useState(false)
+  const [walletError, setWalletError] = useState<string | null>(null)
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
     await login(email || 'demo@a-identity.dev', mode === 'signup' ? name : undefined)
     navigate('/app')
+  }
+
+  const onWallet = async () => {
+    setWalletBusy(true)
+    setWalletError(null)
+    try {
+      await loginWallet()
+      navigate('/app')
+    } catch (e) {
+      setWalletError(e instanceof Error ? e.message : 'Wallet sign-in failed.')
+    } finally {
+      setWalletBusy(false)
+    }
   }
 
   return (
@@ -67,6 +83,21 @@ export default function AuthScreen({ mode }: AuthScreenProps) {
 
         <h1 className="mb-1.5 text-2xl font-bold tracking-tight text-ink">{copy.title}</h1>
         <p className="mb-7 text-sm text-ink/60">{copy.subtitle}</p>
+
+        <button
+          type="button"
+          onClick={onWallet}
+          disabled={walletBusy}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-ink px-5 py-3.5 text-sm font-semibold text-white transition-transform duration-200 hover:scale-[1.02] disabled:opacity-50"
+        >
+          <Wallet size={18} />
+          {walletBusy ? 'Check your wallet...' : 'Sign in with your wallet'}
+        </button>
+        {walletError && <p className="mt-2 text-center text-xs text-red-600">{walletError}</p>}
+
+        <div className="my-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-ink/35">
+          <span className="h-px flex-1 bg-ink/10" /> or continue as guest <span className="h-px flex-1 bg-ink/10" />
+        </div>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-3.5">
           {mode === 'signup' && (
