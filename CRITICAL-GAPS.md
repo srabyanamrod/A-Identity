@@ -34,14 +34,13 @@ Live: frontend https://a-identity.vercel.app · backend https://a-identity-backe
 | 7 | Wallet + Permissions screens fake | ✅ **CLOSED** — Permissions real (policy engine, daily cap, 00:00 UTC reset, freeze); Wallet real (live Arc balance + real payments) |
 | 8 | README `.env` instruction wrong | 🟡 handled for deploy (Render env panel + `PORT` fix); local README still inaccurate |
 | 9 | `totalSupply()` reverts (minor) | ✅ **CLOSED** — dropped the reverting totalSupply read and the silently-null registeredAgents field |
-| 10 | Production maturity | 🟡 deployability **CLOSED** (Render + Vercel); **tests + CI added** — node:test unit tests + a full E2E flow test (32 checks, whole product) run in GitHub Actions; JSON state still ephemeral on Render (a hosted DB is the only thing left) |
+| 10 | Production maturity | ✅ **CLOSED** — deployability (Render + Vercel); tests + CI (node:test unit + full E2E, 34 checks, in GitHub Actions); durable persistence via Postgres (`DATABASE_URL`) with a JSON-file fallback for dev — verified surviving a restart. Set `DATABASE_URL` on Render for a fully durable deploy |
 
 **Closed this session:** #1 auth · #2 client-side keys · #4 reputation · #6 core flow · #7 Permissions+Wallet · #9 totalSupply · #10 deployability + tests/CI.
 **Remaining:**
-- **#3 KYA verification** ❌ — agents are still auto-stamped `kya: 'verified'`; no real check (challenge, wallet proof, or ValidationRegistry).
-- **#10 durable persistence** 🟡 — state is a JSON file (ephemeral on Render); a Postgres via `DATABASE_URL` is the last production item.
+- **#3 KYA verification** ❌ — agents are still auto-stamped `kya: 'verified'`; no real check (challenge, wallet proof, or the on-chain ValidationRegistry). The only original gap still open.
 
-(#5 x402 and #8 README are now closed; see the table above.)
+(#5 x402, #8 README, and #10 persistence are now closed — see the table above.)
 
 ---
 

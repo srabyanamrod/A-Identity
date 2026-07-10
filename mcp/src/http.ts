@@ -27,6 +27,7 @@ import {
   createAgent,
   createInstruction,
   createWallet,
+  initState,
   recordWallet,
   executeInstruction,
   followAgent,
@@ -419,6 +420,9 @@ const server = http.createServer(async (req, res) => {
 
   sendJson(res, 404, { error: 'not found' })
 })
+
+// Load persisted state (Postgres or JSON) before we start serving.
+await initState()
 
 server.listen(PORT, () => {
   console.error(`[a-identity-mcp] HTTP on http://localhost:${PORT}`)

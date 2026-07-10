@@ -15,9 +15,7 @@
  *
  * State persists to mcp/data/platform.json so restarts keep the demo alive.
  */
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { loadState, saveState as save } from './storage.js'
 import { ARC_TESTNET } from './arc.js'
 import { registerAgentOnchain, payUsdcOnchain } from './arc-contracts.js'
 
@@ -107,23 +105,20 @@ type State = {
 
 // ── persistence ───────────────────────────────────────────────────────────────
 
-const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'data')
-const DATA_FILE = join(DATA_DIR, 'platform.json')
+const state: State = { agents: [], wallets: [], instructions: [] }
 
-function load(): State {
-  try {
-    return JSON.parse(readFileSync(DATA_FILE, 'utf8')) as State
-  } catch {
-    return { agents: [], wallets: [], instructions: [] }
+/**
+ * Load persisted state (Postgres via DATABASE_URL, else the local JSON file) into
+ * memory. Call once before serving requests.
+ */
+export async function initState() {
+  const loaded = await loadState<State>()
+  if (loaded) {
+    state.agents = loaded.agents ?? []
+    state.wallets = loaded.wallets ?? []
+    state.instructions = loaded.instructions ?? []
   }
 }
-
-function save(state: State) {
-  mkdirSync(DATA_DIR, { recursive: true })
-  writeFileSync(DATA_FILE, JSON.stringify(state, null, 2))
-}
-
-const state = load()
 
 const id = (prefix: string) =>
   `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
