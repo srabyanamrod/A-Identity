@@ -37,7 +37,7 @@ export default function AgentId() {
   const user = useAuth((s) => s.user)
   const [showReg, setShowReg] = useState(false)
 
-  const mcpOnline = useMcpHealth()
+  const mcpOnline = useMcpHealth() === 'online'
 
   // Live MCP data
   const { agent: liveAgent, source, loading: agentLoading } = useResolveAgent(DEMO_AGENT_ID)

@@ -37,7 +37,7 @@ export default function AppLayout() {
   const location = useLocation()
   const user = useAuth((s) => s.user)
   const logout = useAuth((s) => s.logout)
-  const mcpOnline = useMcpHealth()
+  const mcp = useMcpHealth()
 
   const current = [...NAV].reverse().find((n) => location.pathname.startsWith(n.to))
   const title = current?.label ?? 'Overview'
@@ -90,22 +90,28 @@ export default function AppLayout() {
             <div className="flex items-center gap-1.5">
               <span
                 className={`h-2 w-2 rounded-full ${
-                  mcpOnline === null
+                  mcp === 'checking'
                     ? 'animate-pulse bg-ink/25'
-                    : mcpOnline
-                      ? 'bg-emerald-400'
-                      : 'bg-red-400'
+                    : mcp === 'waking'
+                      ? 'animate-pulse bg-amber-400'
+                      : mcp === 'online'
+                        ? 'bg-emerald-400'
+                        : 'bg-red-400'
                 }`}
               />
               <span className="text-[11px] text-ink/40">
-                {mcpOnline === null ? 'checking' : mcpOnline ? 'online' : 'offline'}
+                {mcp === 'checking' ? 'checking' : mcp === 'waking' ? 'waking up' : mcp}
               </span>
             </div>
           </div>
           <p className="mt-1 text-[11px] leading-relaxed text-ink/40">
-            {mcpOnline
-              ? 'Live data from localhost:3399'
-              : 'Run: cd mcp && npm run start:http'}
+            {mcp === 'online'
+              ? 'Live on-chain data'
+              : mcp === 'waking'
+                ? 'Backend is cold-starting (~30s)...'
+                : mcp === 'checking'
+                  ? 'Connecting...'
+                  : 'Backend unreachable'}
           </p>
         </div>
 
@@ -147,7 +153,11 @@ export default function AppLayout() {
             <div className="flex items-center gap-1.5 md:hidden">
               <span
                 className={`h-1.5 w-1.5 rounded-full ${
-                  mcpOnline ? 'bg-emerald-400' : 'bg-ink/20'
+                  mcp === 'online'
+                    ? 'bg-emerald-400'
+                    : mcp === 'waking'
+                      ? 'animate-pulse bg-amber-400'
+                      : 'bg-ink/20'
                 }`}
               />
               <span className="text-xs text-ink/40">MCP</span>
@@ -157,6 +167,14 @@ export default function AppLayout() {
             </div>
           </div>
         </header>
+
+        {/* Cold-start banner: the backend (free tier) may nap and take ~30s to wake. */}
+        {mcp === 'waking' && (
+          <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-5 py-2 text-xs font-medium text-amber-800 sm:px-8">
+            <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-400" />
+            Waking up the backend (cold start, ~30s). Live data will appear shortly.
+          </div>
+        )}
 
         {/* Mobile nav */}
         <nav className="flex gap-1 overflow-x-auto border-b border-ink/10 bg-white px-4 py-2 md:hidden">

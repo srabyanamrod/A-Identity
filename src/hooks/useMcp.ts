@@ -13,24 +13,43 @@ import {
 
 // ── health ───────────────────────────────────────────────────────────────────
 
-export function useMcpHealth() {
-  const [online, setOnline] = useState<boolean | null>(null)
+export type McpStatus = 'checking' | 'waking' | 'online' | 'offline'
+
+/**
+ * Health status with cold-start awareness. A free-tier host (e.g. Render) can take
+ * ~30-50s to wake from idle; instead of flashing "offline", we show "waking" while
+ * we keep polling, and only call it offline after the wake window elapses.
+ */
+export function useMcpHealth(): McpStatus {
+  const [status, setStatus] = useState<McpStatus>('checking')
 
   useEffect(() => {
     let cancelled = false
-    const check = async () => {
+    let attempts = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const tick = async () => {
       const ok = await checkHealth()
-      if (!cancelled) setOnline(ok)
+      if (cancelled) return
+      if (ok) {
+        attempts = 0
+        setStatus('online')
+        timer = setTimeout(tick, 12_000)
+        return
+      }
+      attempts += 1
+      setStatus(attempts >= 12 ? 'offline' : 'waking')
+      timer = setTimeout(tick, attempts >= 12 ? 12_000 : 3_000)
     }
-    check()
-    const id = setInterval(check, 12_000)
+
+    tick()
     return () => {
       cancelled = true
-      clearInterval(id)
+      if (timer) clearTimeout(timer)
     }
   }, [])
 
-  return online
+  return status
 }
 
 // ── resolve agent ─────────────────────────────────────────────────────────────
