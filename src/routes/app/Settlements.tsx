@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowUpRight, CheckCircle2, Clock, ExternalLink, Link2, Send, ShieldQuestion } from 'lucide-react'
+import { ArrowUpRight, CheckCircle2, Clock, ExternalLink, Link2, Send, ShieldQuestion, Wallet } from 'lucide-react'
 import { authHeaders } from '../../store/auth'
 import X402Panel from '../../components/app/X402Panel'
 
@@ -25,7 +25,7 @@ type Instruction = {
   policyNote: string
   txHash?: string
   explorerUrl?: string
-  enforcedBy?: 'server' | 'onchain-vault'
+  enforcedBy?: 'server' | 'circle-agent-stack' | 'onchain-vault'
   createdAt: string
 }
 
@@ -209,6 +209,11 @@ export default function Settlements() {
                       {ix.enforcedBy === 'onchain-vault' && (
                         <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#7342E2]/10 px-2 py-0.5 text-[10px] font-bold text-[#7342E2]">
                           <Link2 size={10} /> On-chain policy
+                        </span>
+                      )}
+                      {ix.enforcedBy === 'circle-agent-stack' && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#2775CA]/10 px-2 py-0.5 text-[10px] font-bold text-[#2775CA]">
+                          <Wallet size={10} /> Circle Agent Wallet
                         </span>
                       )}
                     </div>

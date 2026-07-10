@@ -38,6 +38,8 @@ import {
   updateAgentPermissions,
   provisionAgentVault,
   getAgentVault,
+  provisionCircleWallet,
+  getAgentCircleWallet,
   type InstructionType,
 } from './platform.js'
 import { issueToken, verifyToken } from './auth.js'
@@ -343,6 +345,24 @@ const server = http.createServer(async (req, res) => {
     const agentId = url.searchParams.get('agentId') ?? ''
     if (!agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
     const r = await getAgentVault(agentId)
+    if ('error' in r && typeof r.error === 'string') { sendJson(res, errStatus(r.error), r); return }
+    sendJson(res, 200, r)
+    return
+  }
+  // Provision a Circle Agent Wallet for an agent (hosted policy layer, credential-gated)
+  if (req.method === 'POST' && url.pathname === '/api/agents/circle-wallet') {
+    const body = (await readBody(req).catch(() => null)) as { agentId?: string; fund?: boolean } | null
+    if (!body?.agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
+    const r = await provisionCircleWallet(body.agentId, { fund: body.fund, caller: caller ?? undefined })
+    if ('error' in r && typeof r.error === 'string') { sendJson(res, errStatus(r.error), r); return }
+    sendJson(res, 200, r)
+    return
+  }
+  // Read an agent's live Circle Agent Wallet state + balances
+  if (req.method === 'GET' && url.pathname === '/api/agents/circle-wallet') {
+    const agentId = url.searchParams.get('agentId') ?? ''
+    if (!agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
+    const r = await getAgentCircleWallet(agentId)
     if ('error' in r && typeof r.error === 'string') { sendJson(res, errStatus(r.error), r); return }
     sendJson(res, 200, r)
     return

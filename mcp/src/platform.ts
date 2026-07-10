@@ -21,6 +21,7 @@ import {
   registerAgentOnchain, payUsdcOnchain, ARC_EXPLORER,
   deployPolicyVault, policyPay, policyOwnerPay, readPolicyVault,
 } from './arc-contracts.js'
+import { createAgentWallet, circlePay, readCircleWallet } from './circle-agent.js'
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,11 @@ export type PlatformAgent = {
   /** On-chain AgentSpendPolicy vault: enforces this agent's spend policy on Arc. */
   vaultAddress?: string
   vaultExplorer?: string
+  /** Circle Agent Wallet (Developer-Controlled, ARC-TESTNET): Circle's hosted
+   *  policy engine screens this wallet's transfers at the wallet layer. */
+  circleWalletId?: string
+  circleWalletAddress?: string
+  circleWalletExplorer?: string
   passport: {
     standard: 'ERC-8004'
     registrationJson: Record<string, unknown>
@@ -100,8 +106,9 @@ export type Instruction = {
   /** Set when the instruction was broadcast for real on Arc testnet. */
   txHash?: string
   explorerUrl?: string
-  /** Which layer settled or blocked this: server pre-check or the on-chain vault. */
-  enforcedBy?: 'server' | 'onchain-vault'
+  /** Which layer settled or blocked this: our server pre-check, Circle's hosted
+   *  policy engine (Agent Wallet), or the trustless on-chain vault. */
+  enforcedBy?: 'server' | 'circle-agent-stack' | 'onchain-vault'
   createdAt: string
 }
 
@@ -386,6 +393,54 @@ export async function getAgentVault(agentId: string) {
   return { vaultAddress: agent.vaultAddress, ...live }
 }
 
+// ── Circle Agent Wallet (hosted, wallet-layer enforcement) ───────────────────────
+
+/**
+ * Provision a Circle Agent Wallet (Developer-Controlled EOA on ARC-TESTNET) for an
+ * agent — the second, hosted enforcement layer alongside the on-chain vault. Once set,
+ * this agent's address payments can settle THROUGH Circle, whose hosted policy engine
+ * screens each transfer at the wallet layer (sanctions / allow-block / freeze). Owner-
+ * only; credential-gated behind CIRCLE_API_KEY + CIRCLE_ENTITY_SECRET (no-op without).
+ */
+export async function provisionCircleWallet(
+  agentId: string,
+  opts: { fund?: boolean; caller?: string } = {},
+) {
+  const agent = state.agents.find((a) => a.id === agentId)
+  if (!agent) return { error: 'Unknown agent' }
+  if (!ownsAgent(agent, opts.caller)) return { error: 'Forbidden: not the agent owner' }
+  if (agent.circleWalletId)
+    return { error: 'Agent already has a Circle Agent Wallet', circleWalletId: agent.circleWalletId }
+
+  const res = await createAgentWallet(
+    { name: agent.name, refId: agent.id, fund: opts.fund ?? true },
+    process.env,
+  )
+  if (!res.provisioned) return { error: res.reason }
+
+  agent.circleWalletId = res.walletId
+  agent.circleWalletAddress = res.walletAddress
+  agent.circleWalletExplorer = res.explorerUrl
+  pushActivity(agent, `Circle Agent Wallet provisioned on Arc: ${short(res.walletAddress)}`)
+  save(state)
+  return {
+    circleWalletId: res.walletId,
+    circleWalletAddress: res.walletAddress,
+    circleWalletExplorer: res.explorerUrl,
+    blockchain: res.blockchain,
+    funded: res.funded,
+  }
+}
+
+/** Read an agent's live Circle Agent Wallet state + balances (needs creds). */
+export async function getAgentCircleWallet(agentId: string) {
+  const agent = state.agents.find((a) => a.id === agentId)
+  if (!agent) return { error: 'Unknown agent' }
+  if (!agent.circleWalletId) return { circleWalletId: null }
+  const live = await readCircleWallet(agent.circleWalletId)
+  return { circleWalletId: agent.circleWalletId, circleWalletAddress: agent.circleWalletAddress, ...live }
+}
+
 // ── policy / permissions ───────────────────────────────────────────────────────
 
 function todayUTC(): string {
@@ -619,6 +674,35 @@ export async function executeInstruction(ixId: string, caller?: string): Promise
       return ix
     }
     // Not a policy revert (no key / infra error) — fall through to direct settlement.
+  }
+
+  // Circle Agent Wallet: the agent's USDC lives in a Circle-managed wallet whose
+  // hosted policy engine screens every transfer at the wallet layer (sanctions /
+  // allow-block / freeze). A screening DENY is an authoritative rejection (like a
+  // vault revert); no creds / infra / timeout falls through to direct settlement.
+  // Vault-first by design: an agent with a vault settles there; this runs when the
+  // agent has a Circle wallet (and, as a resilience bonus, if the vault infra-failed).
+  if (isAddr && agent?.circleWalletId) {
+    const res = await circlePay(agent.circleWalletId, ix.payee, total)
+    if (res.executed) {
+      ix.status = 'executed_onchain'
+      ix.txHash = res.txHash
+      ix.explorerUrl = res.explorerUrl
+      ix.enforcedBy = 'circle-agent-stack'
+      ix.policyNote = `Settled ${fmt(total)} USDC through the Circle Agent Wallet (hosted policy screened + approved).`
+      pushActivity(agent, `Circle Agent Wallet settled ${fmt(total)} USDC to ${short(ix.payee)} (tx ${short(res.txHash)})`)
+      save(state)
+      return ix
+    }
+    if (res.rejected) {
+      ix.status = 'pending_approval'
+      ix.enforcedBy = 'circle-agent-stack'
+      ix.policyNote = `Circle's hosted policy rejected this (${res.reason}); a human must intervene.`
+      pushActivity(agent, `Circle Agent Wallet rejected ${fmt(total)} USDC to ${short(ix.payee)}: ${res.reason}`)
+      save(state)
+      return ix
+    }
+    // Not a policy rejection (no creds / infra) — fall through to direct settlement.
   }
 
   // Direct settlement when the payee is an Arc address and a signer is configured.

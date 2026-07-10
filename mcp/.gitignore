@@ -3,3 +3,5 @@ dist
 *.log
 .env
 .env.*
+circle-recovery.dat
+recovery_file_*.dat

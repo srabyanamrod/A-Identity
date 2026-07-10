@@ -11,6 +11,7 @@ import {
   Save,
   Shield,
   Snowflake,
+  Wallet,
 } from 'lucide-react'
 import { useAuth, authHeaders } from '../../store/auth'
 
@@ -288,6 +289,9 @@ export default function Permissions() {
 
           {/* On-chain policy vault — deploy this policy as a smart contract on Arc */}
           <VaultPanel agentId={agentId} />
+
+          {/* Circle Agent Wallet — the hosted, wallet-layer enforcement layer */}
+          <CircleWalletPanel agentId={agentId} />
 
           {/* Try a payment (live policy tester) */}
           <PolicyTester agentId={agentId} onSpent={() => loadPolicy(agentId)} />
@@ -588,5 +592,134 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="text-[10px] font-semibold uppercase tracking-wide text-ink/40">{label}</div>
       <div className="mt-0.5 text-sm font-bold text-ink">{value}</div>
     </div>
+  )
+}
+
+type CircleWalletState = {
+  circleWalletId: string | null
+  circleWalletAddress?: string | null
+  configured?: boolean
+  walletAddress?: string | null
+  blockchain?: string | null
+  state?: string | null
+  balances?: { amount: string; symbol?: string; tokenAddress?: string }[]
+  explorer?: string | null
+  reason?: string
+  error?: string
+}
+
+/**
+ * Provision a Circle Agent Wallet for the agent — the hosted, wallet-layer enforcement
+ * layer that complements the on-chain vault. The agent's USDC lives in a Circle-managed
+ * wallet on Arc whose hosted policy engine SCREENS every transfer (sanctions, address
+ * allow/block, freeze). Precise by design: Circle screens at the wallet layer; the spend
+ * cap stays on our server + the on-chain vault. Credential-gated behind Circle keys.
+ */
+function CircleWalletPanel({ agentId }: { agentId: string }) {
+  const [wallet, setWallet] = useState<CircleWalletState | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`${MCP_BASE}/api/agents/circle-wallet?agentId=${agentId}`, {
+        signal: AbortSignal.timeout(12000),
+      })
+      setWallet((await res.json()) as CircleWalletState)
+      setErr(null)
+    } catch {
+      setErr('Could not load Circle wallet status.')
+    } finally {
+      setLoading(false)
+    }
+  }, [agentId])
+
+  useEffect(() => {
+    if (agentId) load()
+  }, [agentId, load])
+
+  const provision = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      const res = await fetch(`${MCP_BASE}/api/agents/circle-wallet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ agentId, fund: true }),
+      })
+      const j = (await res.json()) as { error?: string }
+      if (j.error) setErr(j.error)
+      await load()
+    } catch {
+      setErr('Provision failed. The backend needs CIRCLE_API_KEY + CIRCLE_ENTITY_SECRET.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const has = !!wallet?.circleWalletId
+  const addr = wallet?.circleWalletAddress ?? wallet?.walletAddress ?? null
+  const usdc = wallet?.balances?.find((b) => (b.symbol ?? '').toUpperCase().includes('USDC'))
+
+  return (
+    <section className="mt-4 rounded-2xl border border-[#2775CA]/25 bg-[#2775CA]/[0.04] p-6">
+      <div className="mb-1 flex items-center gap-2">
+        <Wallet size={16} className="text-[#2775CA]" />
+        <h3 className="font-semibold text-ink">Circle Agent Wallet</h3>
+        {has && (
+          <span className="ml-1 rounded-full bg-[#2775CA]/10 px-2 py-0.5 text-[10px] font-bold text-[#2775CA]">
+            Live on Arc
+          </span>
+        )}
+      </div>
+      <p className="mb-4 text-xs text-ink/55">
+        Give the agent a <b>Circle-managed wallet</b> on Arc. Circle's hosted policy engine screens
+        every transfer at the <b>wallet layer</b> — sanctions, address allow/block, and freeze — and
+        settles real USDC. It complements the on-chain vault: the server sets the spend cap, Circle
+        screens at the wallet layer, and the vault enforces it trustlessly on-chain.
+      </p>
+
+      {loading ? (
+        <div className="text-xs text-ink/45">Loading Circle wallet status...</div>
+      ) : has ? (
+        <div className="space-y-3">
+          {addr && (
+            <a
+              href={wallet?.explorer ?? `https://testnet.arcscan.app/address/${addr}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 font-mono text-xs font-semibold text-[#2775CA] hover:underline"
+            >
+              {short(addr)} <ExternalLink size={11} />
+            </a>
+          )}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Stat label="Wallet state" value={wallet?.state ?? (wallet?.configured === false ? 'keys off' : '—')} />
+            <Stat label="USDC balance" value={usdc ? `$${Number(usdc.amount).toFixed(2)}` : '—'} />
+            <Stat label="Network" value={wallet?.blockchain ?? 'ARC-TESTNET'} />
+          </div>
+          {wallet?.configured === false && wallet?.reason && (
+            <p className="text-[11px] text-ink/45">
+              Wallet stored; live balance needs Circle keys on the backend. {wallet.reason}
+            </p>
+          )}
+          <p className="text-[11px] text-ink/45">
+            Address payments now settle through Circle, screened by its hosted policy at the wallet layer.
+          </p>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={provision}
+          disabled={busy}
+          className="rounded-full bg-[#2775CA] px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:opacity-50"
+        >
+          {busy ? 'Provisioning on Circle...' : 'Provision Circle Agent Wallet'}
+        </button>
+      )}
+      {err && <div className="mt-3 text-xs text-red-600">{err}</div>}
+    </section>
   )
 }
