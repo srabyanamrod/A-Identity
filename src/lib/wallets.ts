@@ -68,6 +68,16 @@ export function getInjectedWallets(): WalletOption[] {
   return list
 }
 
+/**
+ * The best available injected EIP-1193 provider — EIP-6963 discovery first, legacy
+ * `window.ethereum` as a fallback. Use this instead of reaching into `window.ethereum`
+ * directly, so every surface (login, x402 payment, …) selects wallets the same way.
+ */
+export function getActiveInjectedProvider(): Eip1193 | null {
+  refreshInjectedWallets()
+  return getInjectedWallets()[0]?.provider ?? null
+}
+
 // ── WalletConnect (mobile wallets via QR) ─────────────────────────────────────────
 
 export const WC_PROJECT_ID = (import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined) ?? ''

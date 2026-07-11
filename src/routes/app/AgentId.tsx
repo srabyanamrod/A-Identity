@@ -13,6 +13,8 @@ import {
 import { useAuth, authHeaders } from '../../store/auth'
 import { useAgentReputation, useMcpHealth, useResolveAgent } from '../../hooks/useMcp'
 import { pickPrimaryAgent } from '../../lib/pickAgent'
+import { fetchPlatformAgents, invalidatePlatformAgents } from '../../lib/platformAgents'
+import { MCP_BASE } from '../../lib/mcpBase'
 
 type Stage = 'register' | 'verify' | 'live'
 
@@ -52,13 +54,10 @@ export default function AgentId() {
 
   const mcpOnline = useMcpHealth() === 'online'
 
-  // Live MCP data
-  const { agent: liveAgent, source, loading: agentLoading } = useResolveAgent(DEMO_AGENT_ID)
-  const { reputation: liveRep, loading: repLoading } = useAgentReputation(DEMO_AGENT_ID)
-
   // The user's first real agent (from the platform), when available. Drives the
   // identity card below; falls back to the mock resolve only when there are no agents.
   const [realAgent, setRealAgent] = useState<RealAgent | null>(null)
+  const [realChecked, setRealChecked] = useState(false)
   const [realRep, setRealRep] = useState<{
     score: number
     breakdown: { settlement: number; validation: number; tenure: number }
@@ -67,20 +66,31 @@ export default function AgentId() {
     let cancelled = false
     ;(async () => {
       try {
-        const list = await fetch(`${MCP_BASE}/api/platform-agents`).then((r) => r.json())
-        const first: RealAgent | undefined = pickPrimaryAgent(list.agents)
-        if (!first || cancelled) return
-        setRealAgent(first)
-        const rep = await fetch(`${MCP_BASE}/api/agents/reputation?agentId=${first.id}`).then((r) => r.json())
-        if (!cancelled && rep && !('error' in rep)) setRealRep({ score: rep.score, breakdown: rep.breakdown })
+        const list = await fetchPlatformAgents<RealAgent>()
+        if (cancelled) return
+        const first = pickPrimaryAgent(list.agents)
+        if (first) {
+          setRealAgent(first)
+          const rep = await fetch(`${MCP_BASE}/api/agents/reputation?agentId=${first.id}`).then((r) => r.json())
+          if (!cancelled && rep && !('error' in rep)) setRealRep({ score: rep.score, breakdown: rep.breakdown })
+        }
       } catch {
         /* keep the fallbacks */
+      } finally {
+        if (!cancelled) setRealChecked(true)
       }
     })()
     return () => {
       cancelled = true
     }
   }, [])
+
+  // Only resolve the MOCK demo agent as a fallback — and only once we've confirmed the
+  // account has no real agent. Avoids two throwaway requests on every mount when a real
+  // agent already exists.
+  const useMockFallback = realChecked && !realAgent
+  const { agent: liveAgent, source, loading: agentLoading } = useResolveAgent(DEMO_AGENT_ID, useMockFallback)
+  const { reputation: liveRep, loading: repLoading } = useAgentReputation(DEMO_AGENT_ID, useMockFallback)
 
   // Real reputation when available; no fabricated fallback (show '—' if we have none).
   const score = realRep?.score ?? liveRep?.score ?? null
@@ -291,13 +301,22 @@ export default function AgentId() {
       <div className="mt-4 rounded-2xl border border-ink/10 bg-white p-6">
         <h3 className="mb-4 font-semibold">Reputation milestones</h3>
         <ul className="flex flex-col gap-3">
-          {[
-            { threshold: 100, label: 'First verified agent', done: true },
-            { threshold: 300, label: 'Trusted agent (auto-approve eligible)', done: true },
-            { threshold: 500, label: 'Established agent (raised daily cap)', done: true },
-            ...(score != null ? [{ threshold: score, label: 'You are here', done: true, current: true }] : []),
-            { threshold: 900, label: 'Elite agent (full autonomy tier)', done: false },
-          ].map(({ threshold, label, done, current }) => (
+          {(() => {
+            // `done` reflects the agent's REAL reputation score, not a hardcoded flag:
+            // a milestone is achieved only once score >= its threshold (—/unknown → not done).
+            const has = score != null
+            const s = score ?? 0
+            const base = [
+              { threshold: 100, label: 'First verified agent' },
+              { threshold: 300, label: 'Trusted agent (auto-approve eligible)' },
+              { threshold: 500, label: 'Established agent (raised daily cap)' },
+              { threshold: 900, label: 'Elite agent (full autonomy tier)' },
+            ].map((m) => ({ ...m, done: has && s >= m.threshold, current: false }))
+            const rows = has
+              ? [...base, { threshold: s, label: 'You are here', done: true, current: true }]
+              : base
+            return rows.sort((a, b) => a.threshold - b.threshold)
+          })().map(({ threshold, label, done, current }) => (
             <li
               key={label}
               className={`flex items-center gap-3 rounded-xl px-4 py-3 ${
@@ -356,8 +375,6 @@ function ReputationCard({
     </div>
   )
 }
-
-import { MCP_BASE } from '../../lib/mcpBase'
 
 const CAPABILITIES = ['Payments', 'Purchases', 'Rentals', 'Batch actions'] as const
 
@@ -441,8 +458,10 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
         }),
       })
       const data = (await res.json()) as { agent?: { id: string } }
-      if (data.agent) setDone(data.agent.id)
-      else setError('Registration failed. Is the MCP server running?')
+      if (data.agent) {
+        invalidatePlatformAgents() // a new agent joined the list — drop the shared cache
+        setDone(data.agent.id)
+      } else setError('Registration failed. Is the MCP server running?')
     } catch {
       setError('Registration needs the MCP server. Run: npm run dev:all')
     } finally {
@@ -467,8 +486,10 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
         result?: { executed?: boolean; reason?: string }
         error?: string
       }
-      if (data.result?.executed && data.agent) setAnchored(data.agent)
-      else setAnchorNote(data.result?.reason ?? data.error ?? 'Could not broadcast. Set a funded ARC_SIGNER_KEY on the server.')
+      if (data.result?.executed && data.agent) {
+        invalidatePlatformAgents() // on-chain status changed — refresh the shared list next read
+        setAnchored(data.agent)
+      } else setAnchorNote(data.result?.reason ?? data.error ?? 'Could not broadcast. Set a funded ARC_SIGNER_KEY on the server.')
     } catch {
       setAnchorNote('Anchoring needs the MCP server running with a funded ARC_SIGNER_KEY.')
     } finally {

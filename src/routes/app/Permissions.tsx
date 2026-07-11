@@ -16,6 +16,7 @@ import {
 import { useAuth, authHeaders } from '../../store/auth'
 
 import { MCP_BASE } from '../../lib/mcpBase'
+import { fetchPlatformAgents } from '../../lib/platformAgents'
 const short = (a: string) => (a.length > 14 ? `${a.slice(0, 8)}...${a.slice(-4)}` : a)
 
 type Permissions = {
@@ -62,8 +63,7 @@ export default function Permissions() {
   useEffect(() => {
     ;(async () => {
       try {
-        const res = await fetch(`${MCP_BASE}/api/platform-agents`, { signal: AbortSignal.timeout(6000) })
-        const data = (await res.json()) as { agents: Agent[] }
+        const data = await fetchPlatformAgents<Agent>()
         setAgents(data.agents)
         if (data.agents.length) setAgentId((cur) => cur || data.agents[0].id)
         else setLoading(false)

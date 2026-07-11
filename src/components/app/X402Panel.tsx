@@ -3,6 +3,7 @@ import { encodeFunctionData } from 'viem'
 import { CheckCircle2, ExternalLink, Lock, Zap } from 'lucide-react'
 
 import { MCP_BASE } from '../../lib/mcpBase'
+import { getActiveInjectedProvider } from '../../lib/wallets'
 
 const ERC20_TRANSFER = [
   {
@@ -58,11 +59,10 @@ export default function X402Panel() {
       if (!accepts) throw new Error('No payment requirements returned.')
       setReq(accepts)
 
-      // 2. Pay the required USDC on Arc from the connected wallet.
-      const eth = (window as unknown as {
-        ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> }
-      }).ethereum
-      if (!eth) throw new Error('No wallet found. Install MetaMask.')
+      // 2. Pay the required USDC on Arc from the connected wallet (same EIP-6963
+      //    discovery the rest of the app uses, not a raw window.ethereum grab).
+      const eth = getActiveInjectedProvider()
+      if (!eth) throw new Error('No wallet found. Connect a browser wallet to pay.')
       setPhase('paying')
       const accounts = (await eth.request({ method: 'eth_requestAccounts' })) as string[]
       const from = accounts?.[0]

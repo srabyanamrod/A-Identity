@@ -14,6 +14,7 @@ import { useMcpHealth } from '../../hooks/useMcp'
 import { CHAINS } from '../../lib/chains'
 
 import { MCP_BASE } from '../../lib/mcpBase'
+import { fetchPlatformAgents } from '../../lib/platformAgents'
 import { pickPrimaryAgent } from '../../lib/pickAgent'
 
 type Perms = { dailyCapUsd: number; autoApproveUnderUsd: number; frozen: boolean }
@@ -59,9 +60,7 @@ export default function Dashboard() {
     let cancelled = false
     ;(async () => {
       try {
-        const list = await fetch(`${MCP_BASE}/api/platform-agents`, { signal: AbortSignal.timeout(6000) }).then((r) =>
-          r.json(),
-        )
+        const list = await fetchPlatformAgents<Agent>()
         if (cancelled) return
         setAgentTotal(Array.isArray(list.agents) ? list.agents.length : 0)
         const first: Agent | undefined = pickPrimaryAgent(list.agents)

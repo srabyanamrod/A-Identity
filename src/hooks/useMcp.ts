@@ -61,7 +61,7 @@ type AgentState = {
   error: string | null
 }
 
-export function useResolveAgent(query: string | null) {
+export function useResolveAgent(query: string | null, enabled = true) {
   const [state, setState] = useState<AgentState>({
     loading: false,
     agent: null,
@@ -70,7 +70,7 @@ export function useResolveAgent(query: string | null) {
   })
 
   useEffect(() => {
-    if (!query) return
+    if (!query || !enabled) return
     let cancelled = false
     setState({ loading: true, agent: null, source: null, error: null })
     resolveAgent(query).then((res) => {
@@ -87,7 +87,7 @@ export function useResolveAgent(query: string | null) {
       })
     })
     return () => { cancelled = true }
-  }, [query])
+  }, [query, enabled])
 
   return state
 }
@@ -100,11 +100,11 @@ type RepState = {
   error: string | null
 }
 
-export function useAgentReputation(agentId: string | null) {
+export function useAgentReputation(agentId: string | null, enabled = true) {
   const [state, setState] = useState<RepState>({ loading: false, reputation: null, error: null })
 
   useEffect(() => {
-    if (!agentId) return
+    if (!agentId || !enabled) return
     let cancelled = false
     setState({ loading: true, reputation: null, error: null })
     getReputation(agentId).then((res) => {
@@ -120,7 +120,7 @@ export function useAgentReputation(agentId: string | null) {
       })
     })
     return () => { cancelled = true }
-  }, [agentId])
+  }, [agentId, enabled])
 
   return state
 }

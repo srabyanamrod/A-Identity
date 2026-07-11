@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 
 import { MCP_BASE } from '../../lib/mcpBase'
+import { fetchPlatformAgents } from '../../lib/platformAgents'
 import { pickPrimaryAgent } from '../../lib/pickAgent'
 const FAUCET = 'https://faucet.circle.com'
 
@@ -41,8 +42,7 @@ export default function Wallet() {
   useEffect(() => {
     ;(async () => {
       try {
-        const res = await fetch(`${MCP_BASE}/api/platform-agents`, { signal: AbortSignal.timeout(6000) })
-        const data = (await res.json()) as { agents: Agent[] }
+        const data = await fetchPlatformAgents<Agent>()
         setAgents(data.agents)
         if (data.agents.length) setAgentId((cur) => cur || pickPrimaryAgent(data.agents)?.id || data.agents[0].id)
       } catch {
