@@ -1,0 +1,11 @@
+# A-Identity — https://a-identity.xyz
+User-agent: *
+Allow: /
+
+# The authenticated app is behind sign-in and JS-rendered; no crawl value.
+Disallow: /app
+
+# AI agents: a machine-readable manifest of identity, payment, and tool endpoints.
+# /.well-known/ai-agent-manifest.json
+
+Sitemap: https://a-identity.xyz/sitemap.xml

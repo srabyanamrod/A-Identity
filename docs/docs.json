@@ -2,12 +2,25 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "A-Identity",
+  "description": "Documentation for A-Identity — the passport and wallet for the agentic economy: verified ERC-8004 agent identity, x402 and Circle Nanopayments micro-payments, Gateway and CCTP, on Circle Arc.",
   "colors": {
     "primary": "#7342E2",
     "light": "#8B5CF6",
     "dark": "#5B34B8"
   },
   "favicon": "/logo.svg",
+  "seo": {
+    "indexing": "all",
+    "metatags": {
+      "og:site_name": "A-Identity Docs",
+      "og:title": "A-Identity Docs — Passport & Wallet for the Agentic Economy",
+      "og:description": "ERC-8004 identity, x402 + Circle Nanopayments, Gateway, and CCTP on Circle Arc. Verified agents, bounded USDC payments, human-on-the-loop.",
+      "og:image": "https://a-identity.xyz/og-image.png",
+      "twitter:card": "summary_large_image",
+      "twitter:image": "https://a-identity.xyz/og-image.png",
+      "keywords": "agentic economy, ERC-8004, x402, Circle Arc, USDC, Nanopayments, CCTP, agent identity, Know Your Agent, bounded authority"
+    }
+  },
   "logo": {
     "light": "/logo.svg",
     "dark": "/logo.svg"
