@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ArrowUpRight, CheckCircle2, Clock, ExternalLink, Link2, Send, ShieldQuestion, Wallet } from 'lucide-react'
 import { authHeaders } from '../../store/auth'
 import X402Panel from '../../components/app/X402Panel'
+import EscrowPanel from '../../components/app/EscrowPanel'
 
 import { MCP_BASE } from '../../lib/mcpBase'
 import { pickPrimaryAgent } from '../../lib/pickAgent'
@@ -278,6 +279,7 @@ export default function Settlements() {
       )}
 
       <X402Panel />
+      <EscrowPanel />
     </div>
   )
 }

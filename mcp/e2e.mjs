@@ -305,6 +305,17 @@ async function main() {
     check('x402 rejects an invalid payment proof', fake.status === 402, `HTTP ${fake.status}`)
   }
 
+  // ── O. ERC-8183 escrow lifecycle (one-click) ──────────────────────────────────
+  phase('O. ERC-8183 escrow (create → setBudget → fund → submit → complete)')
+  const job = await api('POST', '/api/arc/job-demo', { token: alice, body: { budgetUsd: 0.02 } })
+  if (job.json?.executed === false) {
+    skip('escrow lifecycle runs', 'no signer key (prepared only)')
+  } else {
+    check('escrow ran the full 6-step lifecycle', Array.isArray(job.json?.steps) && job.json.steps.length === 6, `${job.json?.steps?.length} steps / ${job.json?.status}`)
+    check('escrow job settled (status Completed)', job.json?.status === 'Completed', job.json?.status)
+    check('each escrow step carries a real Arc tx', (job.json?.steps ?? []).every((s) => /^0x[0-9a-f]{64}$/i.test(s.txHash || '')))
+  }
+
   // ── summary ─────────────────────────────────────────────────────────────────
   console.log(`\n${passed} passed, ${failed} failed`)
   if (failed) {

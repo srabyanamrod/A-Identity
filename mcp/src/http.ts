@@ -17,7 +17,7 @@ import { resolveAgent, getHistory, listAgents, CHAIN_CONFIG } from './data.js'
 import { computeReputation } from './reputation.js'
 import { getArcStatus } from './arc.js'
 import { getCircleStatus } from './circle.js'
-import { readArcContracts, registerAgentOnchain, createJobOnchain } from './arc-contracts.js'
+import { readArcContracts, registerAgentOnchain, createJobOnchain, runEscrowJobDemo } from './arc-contracts.js'
 import {
   agentPolicy,
   agentReputation,
@@ -294,6 +294,13 @@ const server = http.createServer(async (req, res) => {
       evaluator: body.evaluator,
       description: body.description ?? 'A-Identity agentic-commerce job',
     }))
+    return
+  }
+
+  // ── One-click ERC-8183 escrow lifecycle demo (create→…→complete, real txs) ────
+  if (req.method === 'POST' && url.pathname === '/api/arc/job-demo') {
+    const body = (await readBody(req).catch(() => null)) as { budgetUsd?: number; description?: string } | null
+    sendJson(res, 200, await runEscrowJobDemo({ budgetUsd: body?.budgetUsd, description: body?.description }))
     return
   }
 

@@ -65,7 +65,22 @@ const COMMERCE_ABI = [
   { type: 'function', name: 'complete', stateMutability: 'nonpayable', inputs: [
     { name: 'jobId', type: 'uint256' }, { name: 'reason', type: 'bytes32' }, { name: 'optParams', type: 'bytes' },
   ], outputs: [] },
+  { type: 'function', name: 'getJob', stateMutability: 'view', inputs: [{ name: 'jobId', type: 'uint256' }], outputs: [
+    { type: 'tuple', components: [
+      { name: 'id', type: 'uint256' }, { name: 'client', type: 'address' }, { name: 'provider', type: 'address' },
+      { name: 'evaluator', type: 'address' }, { name: 'description', type: 'string' }, { name: 'budget', type: 'uint256' },
+      { name: 'expiredAt', type: 'uint256' }, { name: 'status', type: 'uint8' }, { name: 'hook', type: 'address' },
+    ] },
+  ] },
+  { type: 'event', name: 'JobCreated', inputs: [
+    { name: 'jobId', type: 'uint256', indexed: true }, { name: 'client', type: 'address', indexed: true },
+    { name: 'provider', type: 'address', indexed: true }, { name: 'evaluator', type: 'address', indexed: false },
+    { name: 'expiredAt', type: 'uint256', indexed: false }, { name: 'hook', type: 'address', indexed: false },
+  ] },
 ] as const
+
+/** ERC-8183 job status enum → label. */
+const JOB_STATUS = ['Open', 'Funded', 'Submitted', 'Completed', 'Rejected', 'Expired'] as const
 
 // ── clients ────────────────────────────────────────────────────────────────────
 
@@ -206,6 +221,83 @@ export async function createJobOnchain(
   })
   await client.waitForTransactionReceipt({ hash })
   return { executed: true, txHash: hash, explorerUrl: tx(hash) }
+}
+
+/**
+ * Run the FULL ERC-8183 escrow lifecycle in one shot, with the server signer acting
+ * as client + provider + evaluator (roles are enforced by address; a single testnet
+ * key drives them all). Six real txs: createJob → setBudget → approve(USDC) → fund →
+ * submit → complete, ending with the job settled (Completed). Env-gated; prepared
+ * without a key. Returns the on-chain trail (jobId + a tx per step + final status).
+ */
+export async function runEscrowJobDemo(
+  input: { budgetUsd?: number; description?: string } = {},
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<
+  | { executed: false; reason: string; contract: string; lifecycle: string[] }
+  | {
+      executed: true
+      jobId: string
+      budgetUsd: number
+      steps: { step: string; txHash: string; explorerUrl: string }[]
+      status: string
+      failedAt?: string
+      reason?: string
+    }
+> {
+  const budgetUsd = input.budgetUsd ?? 0.05
+  const description =
+    input.description ??
+    'A-Identity ERC-8183 escrow demo: an agent hires an agent, USDC is held in escrow, released on delivery.'
+  const lifecycle = ['createJob', 'setBudget', 'approve(USDC)', 'fund', 'submit', 'complete']
+  const signer = await walletClient(env)
+  if (!signer) {
+    return {
+      executed: false,
+      reason: 'No ARC_SIGNER_KEY set. With a funded key this broadcasts the full ERC-8183 escrow lifecycle (6 real txs).',
+      contract: CONTRACTS.agenticCommerce,
+      lifecycle,
+    }
+  }
+  const { keccak256, toHex, parseEventLogs } = await import('viem')
+  const client = await publicClient()
+  const me = signer.account.address
+  const budget = BigInt(Math.round(budgetUsd * 1e6)) // USDC ERC-20 interface = 6 decimals
+  const zero = '0x0000000000000000000000000000000000000000' as const
+  const empty = '0x' as const
+  const steps: { step: string; txHash: string; explorerUrl: string }[] = []
+  const record = async (step: string, hash: `0x${string}`) => {
+    await client.waitForTransactionReceipt({ hash })
+    steps.push({ step, txHash: hash, explorerUrl: tx(hash) })
+  }
+
+  try {
+    // 1) createJob — client=provider=evaluator=signer; job opens
+    const expiredAt = BigInt(Math.floor(Date.now() / 1000) + 3600)
+    const createHash = await signer.client.writeContract({
+      address: CONTRACTS.agenticCommerce, abi: COMMERCE_ABI, functionName: 'createJob',
+      args: [me, me, expiredAt, description, zero],
+    })
+    const receipt = await client.waitForTransactionReceipt({ hash: createHash })
+    steps.push({ step: 'createJob', txHash: createHash, explorerUrl: tx(createHash) })
+    const logs = parseEventLogs({ abi: COMMERCE_ABI, eventName: 'JobCreated', logs: receipt.logs })
+    const jobId = (logs[0]?.args as { jobId?: bigint })?.jobId
+    if (jobId === undefined)
+      return { executed: true, jobId: '?', budgetUsd, steps, status: 'Unknown', failedAt: 'createJob', reason: 'could not parse jobId from JobCreated' }
+
+    // 2) setBudget (provider) — 3) approve USDC (client) — 4) fund → escrow (client)
+    await record('setBudget', await signer.client.writeContract({ address: CONTRACTS.agenticCommerce, abi: COMMERCE_ABI, functionName: 'setBudget', args: [jobId, budget, empty] }))
+    await record('approve(USDC)', await signer.client.writeContract({ address: CONTRACTS.usdc, abi: ERC20_ABI, functionName: 'approve', args: [CONTRACTS.agenticCommerce, budget] }))
+    await record('fund', await signer.client.writeContract({ address: CONTRACTS.agenticCommerce, abi: COMMERCE_ABI, functionName: 'fund', args: [jobId, empty] }))
+    // 5) submit (provider delivers) — 6) complete (evaluator approves, USDC settles)
+    await record('submit', await signer.client.writeContract({ address: CONTRACTS.agenticCommerce, abi: COMMERCE_ABI, functionName: 'submit', args: [jobId, keccak256(toHex(`a-identity:deliverable:${jobId}`)), empty] }))
+    await record('complete', await signer.client.writeContract({ address: CONTRACTS.agenticCommerce, abi: COMMERCE_ABI, functionName: 'complete', args: [jobId, keccak256(toHex(`a-identity:approved:${jobId}`)), empty] }))
+
+    const job = (await client.readContract({ address: CONTRACTS.agenticCommerce, abi: COMMERCE_ABI, functionName: 'getJob', args: [jobId] })) as { status: number }
+    return { executed: true, jobId: jobId.toString(), budgetUsd, steps, status: JOB_STATUS[Number(job.status)] ?? String(job.status) }
+  } catch (err) {
+    return { executed: true, jobId: steps.length ? '(partial)' : '?', budgetUsd, steps, status: 'Reverted', failedAt: lifecycle[steps.length] ?? '?', reason: await revertReason(err) }
+  }
 }
 
 /**
