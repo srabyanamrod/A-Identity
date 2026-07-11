@@ -1,5 +1,5 @@
 {
-  "$schema": "https://a-identity.dev/schemas/agent-manifest-0.2.json",
+  "$schema": "https://a-identity.xyz/schemas/agent-manifest-0.2.json",
   "name": "A-Identity",
   "description": "The passport and wallet for the agentic economy. On-chain agent identity (ERC-8004), x402 micro-payments, MCP-native tool access, and multi-chain settlement (Arc, Base, Arbitrum, Stellar, Algorand).",
   "version": "0.2.0",
@@ -74,17 +74,17 @@
     }
   },
   "endpoints": {
-    "mcp": "https://a-identity.dev/mcp",
+    "mcp": "https://a-identity.xyz/mcp",
     "rest": {
-      "agent": "https://a-identity.dev/api/agent?q={query}",
-      "reputation": "https://a-identity.dev/api/reputation?id={agentId}",
-      "chains": "https://a-identity.dev/api/chains",
-      "agents": "https://a-identity.dev/api/agents?chain={chain}"
+      "agent": "https://a-identity.xyz/api/agent?q={query}",
+      "reputation": "https://a-identity.xyz/api/reputation?id={agentId}",
+      "chains": "https://a-identity.xyz/api/chains",
+      "agents": "https://a-identity.xyz/api/agents?chain={chain}"
     },
     "manifest": "/.well-known/ai-agent-manifest.json",
-    "docs": "https://docs.a-identity.dev",
-    "sdk": "https://docs.a-identity.dev/developers/sdk"
+    "docs": "https://a-identity.mintlify.site",
+    "sdk": "https://a-identity.mintlify.site/developers/sdk"
   },
-  "contact": "agents@a-identity.dev",
+  "contact": "agents@a-identity.xyz",
   "human_oversight": "Actions that hold a key, deploy a contract, or move value require explicit human approval. A person stays in the tower; agents act inside the limits and policies the human sets. No autonomous key custody or mainnet contract deployment."
 }

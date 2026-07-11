@@ -40,9 +40,9 @@ async function main() {
 
   const resolved = (await client.callTool({
     name: 'resolve_agent',
-    arguments: { query: 'payments.a-identity.dev' },
+    arguments: { query: 'payments.a-identity.xyz' },
   })) as TextResult
-  console.log('\nresolve_agent(payments.a-identity.dev):')
+  console.log('\nresolve_agent(payments.a-identity.xyz):')
   console.log(textOf(resolved))
 
   const rep = (await client.callTool({

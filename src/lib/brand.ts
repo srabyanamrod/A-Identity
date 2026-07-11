@@ -12,13 +12,12 @@ export const APP_TAGLINE = 'The passport and wallet for the agentic economy'
  * environment points somewhere real:
  *   - dev: http://localhost:3000 (set in .env.development; run `npm run docs`)
  *   - prod: the deployed docs domain (set VITE_DOCS_URL at build time)
- * IMPORTANT: set VITE_DOCS_URL in the Vercel project once the docs site is deployed.
- * The fallback is the LIVE app origin (not a dead `docs.*` domain), so an unset var
- * degrades to the live homepage instead of a connection error.
+ * The fallback is the LIVE Mintlify docs site, so links resolve even if the env
+ * var is unset. Prod (Vercel) sets VITE_DOCS_URL to the same value.
  */
 export const DOCS_URL =
   (import.meta.env.VITE_DOCS_URL as string | undefined)?.replace(/\/$/, '') ??
-  'https://a-identity.xyz'
+  'https://a-identity.mintlify.site'
 
 /** The three open protocols A-Identity connects, each with its own color. */
 export const PROTOCOLS = [
@@ -77,8 +76,8 @@ export const FOOTER_COLUMNS: readonly FooterColumn[] = [
 
 /** Contact addresses surfaced on the contact page and manifest. */
 export const CONTACT = {
-  agents: 'agents@a-identity.dev',
-  hello: 'hello@a-identity.dev',
+  agents: 'agents@a-identity.xyz',
+  hello: 'hello@a-identity.xyz',
 } as const
 
 export const BACKGROUND_VIDEO =

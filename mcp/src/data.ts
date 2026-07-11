@@ -28,21 +28,21 @@ export type AgentActionHistory = {
 
 export const AGENTS: AgentIdentity[] = [
   // Arc Testnet (eip155:5042002) - ERC-8004 native, gas in USDC, App Kit unified balance
-  { agentId: 'eip155:5042002:8004/10', tokenId: 10, owner: '0xARC0000000000000000000000000000000000010', registrationUri: 'https://agents.a-identity.dev/10/registration.json', domain: 'treasury.arc.a-identity.dev', valid: true, registeredAt: '2026-06-10', chain: 'arc' },
+  { agentId: 'eip155:5042002:8004/10', tokenId: 10, owner: '0xARC0000000000000000000000000000000000010', registrationUri: 'https://agents.a-identity.xyz/10/registration.json', domain: 'treasury.arc.a-identity.xyz', valid: true, registeredAt: '2026-06-10', chain: 'arc' },
   // Ethereum mainnet (eip155:1) - ERC-8004 native
-  { agentId: 'eip155:1:8004/1', tokenId: 1, owner: '0xA11CE00000000000000000000000000000000001', registrationUri: 'https://agents.a-identity.dev/1/registration.json', domain: 'research.a-identity.dev', valid: true, registeredAt: '2026-02-03', chain: 'ethereum' },
-  { agentId: 'eip155:1:8004/2', tokenId: 2, owner: '0xB0B0000000000000000000000000000000000002', registrationUri: 'https://agents.a-identity.dev/2/registration.json', domain: 'payments.a-identity.dev', valid: true, registeredAt: '2026-03-19', chain: 'ethereum' },
-  { agentId: 'eip155:1:8004/3', tokenId: 3, owner: '0xCA1F000000000000000000000000000000000003', registrationUri: 'https://agents.a-identity.dev/3/registration.json', domain: 'scraper.example.com', valid: false, registeredAt: '2026-05-28', chain: 'ethereum' },
+  { agentId: 'eip155:1:8004/1', tokenId: 1, owner: '0xA11CE00000000000000000000000000000000001', registrationUri: 'https://agents.a-identity.xyz/1/registration.json', domain: 'research.a-identity.xyz', valid: true, registeredAt: '2026-02-03', chain: 'ethereum' },
+  { agentId: 'eip155:1:8004/2', tokenId: 2, owner: '0xB0B0000000000000000000000000000000000002', registrationUri: 'https://agents.a-identity.xyz/2/registration.json', domain: 'payments.a-identity.xyz', valid: true, registeredAt: '2026-03-19', chain: 'ethereum' },
+  { agentId: 'eip155:1:8004/3', tokenId: 3, owner: '0xCA1F000000000000000000000000000000000003', registrationUri: 'https://agents.a-identity.xyz/3/registration.json', domain: 'scraper.example.com', valid: false, registeredAt: '2026-05-28', chain: 'ethereum' },
   // Base (eip155:8453) - ERC-8004 native
-  { agentId: 'eip155:8453:8004/4', tokenId: 4, owner: '0xBASE0000000000000000000000000000000004', registrationUri: 'https://agents.a-identity.dev/4/registration.json', domain: 'defi.base.a-identity.dev', valid: true, registeredAt: '2026-04-10', chain: 'base' },
-  { agentId: 'eip155:8453:8004/5', tokenId: 5, owner: '0xBASE0000000000000000000000000000000005', registrationUri: 'https://agents.a-identity.dev/5/registration.json', domain: 'yield.base.a-identity.dev', valid: true, registeredAt: '2026-05-01', chain: 'base' },
+  { agentId: 'eip155:8453:8004/4', tokenId: 4, owner: '0xBASE0000000000000000000000000000000004', registrationUri: 'https://agents.a-identity.xyz/4/registration.json', domain: 'defi.base.a-identity.xyz', valid: true, registeredAt: '2026-04-10', chain: 'base' },
+  { agentId: 'eip155:8453:8004/5', tokenId: 5, owner: '0xBASE0000000000000000000000000000000005', registrationUri: 'https://agents.a-identity.xyz/5/registration.json', domain: 'yield.base.a-identity.xyz', valid: true, registeredAt: '2026-05-01', chain: 'base' },
   // Arbitrum One (eip155:42161) - ERC-8004 native
-  { agentId: 'eip155:42161:8004/6', tokenId: 6, owner: '0xARB10000000000000000000000000000000006', registrationUri: 'https://agents.a-identity.dev/6/registration.json', domain: 'arb-trading.a-identity.dev', valid: true, registeredAt: '2026-05-15', chain: 'arbitrum' },
-  { agentId: 'eip155:42161:8004/7', tokenId: 7, owner: '0xARB10000000000000000000000000000000007', registrationUri: 'https://agents.a-identity.dev/7/registration.json', domain: 'gm.a-identity.dev', valid: true, registeredAt: '2026-06-01', chain: 'arbitrum' },
+  { agentId: 'eip155:42161:8004/6', tokenId: 6, owner: '0xARB10000000000000000000000000000000006', registrationUri: 'https://agents.a-identity.xyz/6/registration.json', domain: 'arb-trading.a-identity.xyz', valid: true, registeredAt: '2026-05-15', chain: 'arbitrum' },
+  { agentId: 'eip155:42161:8004/7', tokenId: 7, owner: '0xARB10000000000000000000000000000000007', registrationUri: 'https://agents.a-identity.xyz/7/registration.json', domain: 'gm.a-identity.xyz', valid: true, registeredAt: '2026-06-01', chain: 'arbitrum' },
   // Stellar (stellar:pubnet) - identity bridged (Soroban registry + SEP-10)
-  { agentId: 'stellar:pubnet:aid/8', tokenId: 8, owner: 'GADERESEARCHAGENTSTELLARPUBLICKEY00000000000000000008', registrationUri: 'https://agents.a-identity.dev/8/registration.json', domain: 'fx.stellar.a-identity.dev', valid: true, registeredAt: '2026-05-22', chain: 'stellar' },
+  { agentId: 'stellar:pubnet:aid/8', tokenId: 8, owner: 'GADERESEARCHAGENTSTELLARPUBLICKEY00000000000000000008', registrationUri: 'https://agents.a-identity.xyz/8/registration.json', domain: 'fx.stellar.a-identity.xyz', valid: true, registeredAt: '2026-05-22', chain: 'stellar' },
   // Algorand (algorand:mainnet) - identity bridged (did:algo + ARC registry)
-  { agentId: 'algorand:mainnet:aid/9', tokenId: 9, owner: 'ALGOAGENT7XV4ABCDEFGHIJKLMNOPQRSTUVWXYZ234567ALGORAND9', registrationUri: 'https://agents.a-identity.dev/9/registration.json', domain: 'pay.algo.a-identity.dev', valid: true, registeredAt: '2026-06-05', chain: 'algorand' },
+  { agentId: 'algorand:mainnet:aid/9', tokenId: 9, owner: 'ALGOAGENT7XV4ABCDEFGHIJKLMNOPQRSTUVWXYZ234567ALGORAND9', registrationUri: 'https://agents.a-identity.xyz/9/registration.json', domain: 'pay.algo.a-identity.xyz', valid: true, registeredAt: '2026-06-05', chain: 'algorand' },
 ]
 
 const HISTORY: Record<string, AgentActionHistory> = {

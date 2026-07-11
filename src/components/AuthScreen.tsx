@@ -65,7 +65,7 @@ export default function AuthScreen({ mode }: AuthScreenProps) {
   }
 
   const onGuest = async () => {
-    await login(email.trim() || 'guest@a-identity.dev', mode === 'signup' ? name : undefined)
+    await login(email.trim() || 'guest@a-identity.xyz', mode === 'signup' ? name : undefined)
     navigate('/app')
   }
 
