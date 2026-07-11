@@ -61,6 +61,7 @@ fallback, so one layer failing never fabricates a success.
 | **ERC-8004** Validation | `0x8004Cb1B…4272` | **KYA**: the agent signs a challenge (viem `verifyMessage`); the result is attested on the ValidationRegistry (`validationRequest` + `validationResponse=100`, tag `"kya"`). |
 | **ERC-8183** Commerce | `0x0747EEf0…4583` | Agent-to-agent job escrow: create → setBudget → approve → fund → submit → complete; USDC held in escrow, released on delivery. |
 | **x402** | `mcp/src/x402.ts` | HTTP-402 pay-per-call: server returns 402 + requirements, client pays USDC on Arc, server verifies on-chain (with replay protection) and serves the resource. |
+| **Circle Gateway** | `mcp/src/gateway.ts` | Chain-abstracted USDC: deposit on Arc → a unified balance, then move it to Base Sepolia via the Forwarding Service (signed EIP-712 burn intent). Minted on Base in <500 ms, gaslessly. Permissionless — no Circle API key. |
 
 ## Verifiable on-chain proof (Arc testnet)
 
@@ -71,6 +72,9 @@ fallback, so one layer failing never fabricates a success.
 - **Completed ERC-8183 escrow job #155504** — full lifecycle settled on Arc.
   createJob [`0xcce5a56c…`](https://testnet.arcscan.app/tx/0xcce5a56cc0518d5760f90d11d88eb70d5097636179eb3e92903152a96a684cc5) →
   complete [`0x245f0ee7…`](https://testnet.arcscan.app/tx/0x245f0ee76a6d8dd21e8a14cbd1f489a3d80a1824113316f3b39c58c0e50f25e3)
+- **Circle Gateway** — USDC deposited on Arc, then moved to **Base Sepolia gaslessly** via the
+  Forwarding Service and minted there in ~6s (verified live on prod). Recipient balance on Base:
+  [signer on Basescan](https://sepolia.basescan.org/address/0xd305607510E0Db2c95807173c7A05BEA53c1ed36).
 
 ## Stack
 
