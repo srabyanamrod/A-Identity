@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { ArrowUpRight, CheckCircle2, Clock, ExternalLink, Link2, Send, ShieldQuestion, Wallet } from 'lucide-react'
 import { authHeaders } from '../../store/auth'
 import X402Panel from '../../components/app/X402Panel'
+import NanopayPanel from '../../components/app/NanopayPanel'
 import EscrowPanel from '../../components/app/EscrowPanel'
 import GatewayPanel from '../../components/app/GatewayPanel'
+import CctpPanel from '../../components/app/CctpPanel'
 
 import { MCP_BASE } from '../../lib/mcpBase'
 import { fetchPlatformAgents } from '../../lib/platformAgents'
@@ -280,8 +282,10 @@ export default function Settlements() {
       )}
 
       <X402Panel />
+      <NanopayPanel />
       <EscrowPanel />
       <GatewayPanel />
+      <CctpPanel />
     </div>
   )
 }

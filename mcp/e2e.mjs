@@ -328,6 +328,34 @@ async function main() {
     check('gateway minted on Base Sepolia (gasless)', gw.json?.baseMint?.minted === true, JSON.stringify(gw.json?.baseMint)?.slice(0, 90))
   }
 
+  // ── Q. Circle Nanopayments (gasless, Gateway-batched x402 v2) ──────────────────
+  phase('Q. Circle Nanopayments (gasless, batched)')
+  const nano = await api('GET', '/api/x402/nano/data')
+  if (nano.status === 501) {
+    skip('nanopayment seller issues a 402 v2', 'no payTo / Gateway rail configured')
+  } else {
+    const acc = nano.json?.accepts?.[0]
+    check('nanopayment seller returns x402 v2 + GatewayWalletBatched',
+      nano.status === 402 && nano.json?.x402Version === 2 && acc?.extra?.name === 'GatewayWalletBatched' && acc?.network === 'eip155:5042002',
+      `HTTP ${nano.status} ${acc?.extra?.name}`)
+  }
+  const nanoDemo = await api('POST', '/api/arc/nanopay-demo', { token: alice, body: { amountUsd: 0.001 } })
+  if (nanoDemo.json?.executed === false) {
+    skip('nanopayment demo settles', 'no signer key (prepared only)')
+  } else {
+    check('nanopayment signed an EIP-3009 authorization (offchain)', typeof nanoDemo.json?.authorization?.nonce === 'string', JSON.stringify(nanoDemo.json?.authorization)?.slice(0, 80))
+    check('nanopayment settled through Circle Gateway', nanoDemo.json?.settle?.success === true, JSON.stringify(nanoDemo.json?.settle)?.slice(0, 90))
+  }
+
+  // ── R. Circle CCTP (native burn-and-mint Arc → Base Sepolia) ───────────────────
+  phase('R. Circle CCTP (burn-and-mint)')
+  const cctp = await api('POST', '/api/arc/cctp-demo', { token: alice, body: { amountUsd: 1 } })
+  if (cctp.json?.executed === false) {
+    skip('cctp bridge runs', 'no signer key (prepared only)')
+  } else {
+    check('cctp bridge produced burn/mint steps', Array.isArray(cctp.json?.steps) && cctp.json.steps.length > 0, `${cctp.json?.steps?.length} steps / ${cctp.json?.state}`)
+  }
+
   // ── summary ─────────────────────────────────────────────────────────────────
   console.log(`\n${passed} passed, ${failed} failed`)
   if (failed) {

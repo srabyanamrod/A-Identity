@@ -137,10 +137,41 @@ Both hackathons' Agentic Economy tracks look for the following. When you speak, 
 "A-Identity gives every AI agent a verifiable on-chain identity (ERC-8004) and a policy-guarded USDC wallet on Arc. Agents pay autonomously within human-set limits — a real x402 pay-per-call rail plus an on-chain policy vault — verified first, bounded always, human-approved above the line."
 
 **"Circle Product Feedback" section (required by Ignyte) — skeleton:**
-- *Why we chose these products:* USDC (settlement), Circle Agent Wallets (hosted wallet-layer screening), Circle Gateway (chain-abstracted USDC), Arc (deterministic fees + fast finality). Micro-payments use the open x402 rail (on-chain-verifiable), not Nanopayments — see README "Why x402 instead of Nanopayments."
+- *Why we chose these products:* USDC (settlement), Circle Wallets (hosted wallet-layer screening), Circle Gateway (chain-abstracted USDC), **Circle Nanopayments** (gasless, Gateway-batched sub-cent x402), **Circle CCTP / Bridge Kit** (native burn-and-mint cross-chain), Arc (deterministic fees + fast finality). We ship **two x402 rails** — our own on-chain self-verifying one AND Circle Nanopayments — see README.
+- *Circle products used (submission checkboxes):* **USDC ✓ · Wallets ✓ · Gateway ✓ · Nanopayments ✓ · CCTP/Bridge Kit ✓.** USYC / StableFX are enterprise-gated → architecture-level only (no penalty per the rules; request access if time allows).
 - *What worked well:* [dev to fill in — live contract reads, fast finality, familiar EVM tooling].
 - *What could improve:* [dev to fill in — e.g. docs / `.env` setup, testnet faucet limits].
 - *Recommendations:* [1-2 concrete dev-experience improvements].
+
+---
+
+## 12. Market data, competitors & business model (research-backed) 📊
+
+> Source: Trends.vc "Agentic Payments" (Know Your Agent / micro-agency model), Jul 2026 + Circle docs.
+> Use these on the **"Why now"**, **competition**, and **business model** slides. Numbers are
+> third-party claims — attribute them ("per Trends.vc") rather than stating as our own data.
+
+### "Why now" — the market is validating our exact thesis
+- **24,000 agents registered on ERC-8004 in a single week** — the identity standard we build on is being adopted *fast*.
+- **87% of financial institutions cite identity trust as the blocker** to agent payments — this is precisely the gap A-Identity (KYA) fills.
+- **+4,700% surge in unidentifiable AI traffic** — "who is this agent?" is now an urgent, measurable problem.
+- **x402 is becoming the default agent-payment protocol** (Solana ~49% of current x402 share); **Stripe/Visa expected to hold ~70% of agent-to-merchant**, while **crypto rails dominate agent-to-agent APIs** — which is exactly our lane.
+- **Identity-standard race:** Visa TAP, Google AP2, and **ERC-8004** (ours). Betting on the open on-chain standard.
+- **The unsolved problem — fraud/liability:** "when an agent makes a bad purchase, who pays?" No framework yet. **Our answer:** KYA (verified identity) + bounded authority (on-chain limits) + human-on-the-loop = the smallest possible blast radius. *This is the slide that lands.*
+
+### Competitive positioning — we're the layer *underneath* the marketplaces
+| Project | What it is | Relationship to us |
+|---|---|---|
+| **moltlaunch** | AI-agent task **marketplace** on Base (ERC-8004 + escrow + x402) | Closest analog. They're a marketplace; **we're the trust/identity+policy layer such marketplaces need.** A plug-in, not a competitor. |
+| **nomu.store** | Solana **commerce autopilot** (AI e-commerce ops, x402-ready checkout) | Different domain (physical commerce). Shows the "agent-discoverable + x402 checkout" pattern. Not a competitor. |
+| **Flovia** | **Analytics** for machine-paid APIs (x402/MPP) | Complementary — they read the payment data our rails produce. Potential integration, not a rival. |
+
+**One-liner:** *"They're building the marketplaces and storefronts of the agent economy. We're the passport office and the bank underneath them — the trust and policy layer every one of them needs."*
+
+### Business model (Aybars's thesis) 💸
+- **A-Identity = the identity + policy layer other agent-marketplaces plug into.** Marketplaces (moltlaunch, agentic.market, nomu…) integrate our SDK for KYA + bounded-authority policy; **we take a small fee per verified settlement** routed through the layer.
+- Ladder: (1) infra/API per agent → (2) **per-transaction take-rate** on settlements that flow through our policy/identity layer → (3) enterprise KYA compliance tier.
+- Why it's credible: agents transact **continuously** (vs humans a few times/day), so a tiny take-rate on verified agent settlements compounds. "Passport for the agentic economy" — the passport office charges per crossing.
 
 ---
 

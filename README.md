@@ -121,6 +121,9 @@ GET  /api/agents/circle-wallet  live Circle wallet state + balance
 POST /api/agents/kya/challenge  start a KYA wallet-control challenge
 POST /api/agents/kya/verify     verify the signature (+ on-chain ValidationRegistry attestation)
 GET  /api/agents/kya            KYA status + live on-chain validation
+GET  /api/x402/nano/data        x402 Nanopayments seller (gasless, Gateway-batched; 402→settle)
+POST /api/arc/nanopay-demo      one-click gasless nanopayment (EIP-3009 + Circle Gateway batch)
+POST /api/arc/cctp-demo         one-click CCTP burn-and-mint (Arc→Base Sepolia, native USDC)
 GET  /api/marketplace           Agent House feed
 POST /api/follow                follow an agent
 ```
@@ -215,7 +218,8 @@ New networks follow the same provider pattern in `mcp/src` (see `erc8004.ts` and
 
 React 19, Vite 6, Tailwind v4, Framer Motion, React Router v7, Zustand ·
 Node, viem, Model Context Protocol SDK, Zod · Mintlify · Circle Arc, ERC-8004,
-ERC-8183, x402, USDC/EURC/USYC.
+ERC-8183, x402, **Circle Nanopayments** (`@circle-fin/x402-batching`), **Circle Gateway**,
+**Circle CCTP / Bridge Kit** (`@circle-fin/bridge-kit`), **Circle Wallets**, USDC/EURC.
 
 ## Circle Product Feedback
 
@@ -245,13 +249,23 @@ on-chain vault and are explicit about that split.
 **USDC / faucet** — the unit of account throughout; `faucet.circle.com` for testnet
 funding.
 
-**Why x402 instead of Nanopayments.** Our micro-payment rail is a real HTTP-402
-pay-per-call flow (server returns 402 + requirements → client pays USDC on Arc →
-server verifies the payment on-chain with replay protection → serves the resource).
-We chose x402 because it's an open, self-verifying standard that fits agent-to-service
-commerce and lets us *prove* settlement on-chain rather than trust a hosted meter. If
-Circle Nanopayments exposes a comparable sub-cent primitive on Arc, it would be a
-natural addition alongside x402 — we'd be glad to compare the two on the same flow.
+**Circle Nanopayments — gasless, sub-cent, Gateway-batched.** We ship **two** x402 rails:
+1. **On-chain, self-verifying x402** (`mcp/src/x402.ts`) — server returns 402 + requirements →
+   client pays USDC on Arc → server verifies the payment on-chain with replay protection + a
+   single-use request nonce → serves. Open standard, *provable* settlement, no hosted meter.
+2. **Circle Nanopayments** (`mcp/src/nanopay.ts`) — the same x402 negotiation over Circle
+   Gateway's `GatewayWalletBatched` scheme: the buyer signs an **EIP-3009 authorization
+   off-chain (zero gas)**, Circle Gateway verifies + credits instantly and **batches** the
+   on-chain settlement, so true sub-cent payments become economical for high-frequency agent
+   traffic. Permissionless on Arc testnet (no API key); the buyer's balance is the same Gateway
+   Wallet deposit we already fund. *Improve:* a testnet faucet that pre-funds a Gateway balance
+   would remove the one-time deposit step from a first-run demo.
+
+**Circle CCTP (Bridge Kit)** — native USDC cross-chain by burn-and-mint (`mcp/src/cctp.ts`):
+USDC is burned on Arc and minted **natively** on Base Sepolia — never wrapped — via CCTPv2
+(`@circle-fin/bridge-kit`). Distinct from Gateway's unified-balance forwarding; together they
+show both canonical USDC-liquidity primitives. *Improve:* the "leaving Arc, amount must exceed
+the CCTPv2 max fee" floor is easy to trip on tiny testnet transfers — a clearer SDK error would help.
 
 ## License
 

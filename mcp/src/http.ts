@@ -51,7 +51,9 @@ import {
   x402PayTo, paymentRequirements, verifyPayment, premiumResource,
   issueX402Nonce, x402NonceValid, consumeX402Nonce,
 } from './x402.js'
+import { nanoPaymentRequirements, settleNano, nanoResource, runNanopayDemo } from './nanopay.js'
 import { runGatewayDemo, gatewayBalance } from './gateway.js'
+import { runCctpDemo } from './cctp.js'
 import { randomBytes } from 'node:crypto'
 
 // Render/most hosts inject PORT; fall back to our own var, then the local default.
@@ -310,6 +312,25 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  // ── x402 Nanopayments seller: gasless, Gateway-batched USDC (x402 v2) ─────────
+  // Second x402 rail. No PAYMENT-SIGNATURE → 402 v2 with the GatewayWalletBatched
+  // requirements; with one → settle through Circle Gateway and serve immediately.
+  if (req.method === 'GET' && url.pathname === '/api/x402/nano/data') {
+    const requirements = await nanoPaymentRequirements()
+    if (!requirements) { sendJson(res, 501, { error: 'nanopayments not configured (no payTo / Gateway rail)' }); return }
+    const proof = req.headers['payment-signature']
+    if (typeof proof !== 'string' || !proof) {
+      res.setHeader('PAYMENT-REQUIRED', Buffer.from(JSON.stringify(requirements)).toString('base64'))
+      sendJson(res, 402, requirements)
+      return
+    }
+    const settled = await settleNano(proof)
+    if (!settled.ok) { sendJson(res, 402, { ...requirements, settleError: settled.reason }); return }
+    res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(settled.settle)).toString('base64'))
+    sendJson(res, 200, nanoResource(settled.settle))
+    return
+  }
+
   // ── REST /api/arc/contracts (LIVE reads of real ERC-8004 + ERC-8183) ─────────
   if (req.method === 'GET' && url.pathname === '/api/arc/contracts') {
     const data = await readArcContracts()
@@ -358,6 +379,20 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/arc/gateway-demo') {
     const body = (await readBody(req).catch(() => null)) as { amountUsd?: number } | null
     sendJson(res, 200, await runGatewayDemo({ amountUsd: body?.amountUsd }))
+    return
+  }
+
+  // ── Circle Nanopayments: one-click gasless, Gateway-batched USDC nanopayment ──
+  if (req.method === 'POST' && url.pathname === '/api/arc/nanopay-demo') {
+    const body = (await readBody(req).catch(() => null)) as { amountUsd?: number } | null
+    sendJson(res, 200, await runNanopayDemo({ amountUsd: body?.amountUsd }))
+    return
+  }
+
+  // ── Circle CCTP: one-click native USDC bridge (burn-and-mint) Arc → Base Sepolia ──
+  if (req.method === 'POST' && url.pathname === '/api/arc/cctp-demo') {
+    const body = (await readBody(req).catch(() => null)) as { amountUsd?: number } | null
+    sendJson(res, 200, await runCctpDemo({ amountUsd: body?.amountUsd }))
     return
   }
 
