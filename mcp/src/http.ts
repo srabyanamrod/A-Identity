@@ -47,7 +47,10 @@ import {
 } from './platform.js'
 import { issueToken, verifyToken, isVerified } from './auth.js'
 import { magicEnabled, sendMagicLink, verifyMagicToken } from './magic.js'
-import { x402PayTo, paymentRequirements, verifyPayment, premiumResource } from './x402.js'
+import {
+  x402PayTo, paymentRequirements, verifyPayment, premiumResource,
+  issueX402Nonce, x402NonceValid, consumeX402Nonce,
+} from './x402.js'
 import { runGatewayDemo, gatewayBalance } from './gateway.js'
 import { randomBytes } from 'node:crypto'
 
@@ -70,8 +73,14 @@ function resolveCorsOrigin(origin: string | undefined): string {
   return ALLOWED_ORIGINS[0] // a safe default so preflights still get a concrete allowed origin
 }
 
-/** Short-lived sign-in nonces, keyed by lowercase wallet address (in-memory). */
-const nonces = new Map<string, string>()
+/**
+ * Short-lived Sign-In-with-Ethereum nonces, keyed by lowercase wallet address.
+ * In-memory + a 10-minute TTL: a nonce expires if unused and stale entries can't pile
+ * up. Correct for our single backend instance; a scaled deploy would move these (and
+ * the KYA challenges in platform.ts, and the x402 nonces) to shared storage.
+ */
+const NONCE_TTL_MS = 10 * 60 * 1000
+const nonces = new Map<string, { nonce: string; exp: number }>()
 
 function readBody(req: http.IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -141,7 +150,7 @@ const server = http.createServer(async (req, res) => {
     }
     const addr = body.address.toLowerCase()
     const nonce = randomBytes(16).toString('hex')
-    nonces.set(addr, nonce)
+    nonces.set(addr, { nonce, exp: Date.now() + NONCE_TTL_MS })
     const message = `A-Identity: sign in with your wallet.\n\nAddress: ${addr}\nNonce: ${nonce}`
     sendJson(res, 200, { message })
     return
@@ -156,7 +165,9 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 400, { error: 'address, message, signature required' }); return
     }
     const addr = body.address.toLowerCase()
-    const nonce = nonces.get(addr)
+    const entry = nonces.get(addr)
+    if (entry && entry.exp <= Date.now()) nonces.delete(addr)
+    const nonce = entry && entry.exp > Date.now() ? entry.nonce : undefined
     if (!nonce || !body.message.includes(nonce)) {
       sendJson(res, 401, { error: 'stale or missing nonce; request a new one' }); return
     }
@@ -275,15 +286,26 @@ const server = http.createServer(async (req, res) => {
     if (!payTo) { sendJson(res, 501, { error: 'x402 not configured (no payTo / signer key)' }); return }
     const proof = req.headers['x-payment']
     if (typeof proof !== 'string' || !proof) {
-      // No payment yet -> 402 with machine-readable requirements.
-      sendJson(res, 402, paymentRequirements(payTo))
+      // No payment yet -> 402 with machine-readable requirements + a fresh single-use
+      // nonce. The client echoes this nonce in X-Payment-Nonce when it redeems.
+      sendJson(res, 402, paymentRequirements(payTo, issueX402Nonce()))
+      return
+    }
+    // Redeem: the payment must answer THIS challenge — a live nonce we issued, bound to
+    // this resource. Without it, an unrelated USDC transfer can't blind-unlock the data.
+    const nonce = typeof req.headers['x-payment-nonce'] === 'string' ? req.headers['x-payment-nonce'] : undefined
+    if (!x402NonceValid(nonce)) {
+      sendJson(res, 402, { ...paymentRequirements(payTo, issueX402Nonce()), verifyError: 'missing or stale payment nonce; re-quote to get a fresh one' })
       return
     }
     const verified = await verifyPayment(proof, payTo)
     if (!verified.ok) {
-      sendJson(res, 402, { ...paymentRequirements(payTo), verifyError: verified.reason })
+      // Keep the same nonce live (echo it back) so the client can retry while the
+      // payment is still confirming; only a real failure/expiry forces a re-quote.
+      sendJson(res, 402, { ...paymentRequirements(payTo, nonce), verifyError: verified.reason })
       return
     }
+    consumeX402Nonce(nonce!) // one challenge unlocks the resource exactly once
     sendJson(res, 200, await premiumResource(proof))
     return
   }

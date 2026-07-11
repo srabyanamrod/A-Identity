@@ -34,7 +34,7 @@ Live: frontend https://a-identity.vercel.app · backend https://a-identity-backe
 | 7 | Wallet + Permissions screens fake | ✅ **CLOSED** — Permissions real (policy engine, daily cap, 00:00 UTC reset, freeze); Wallet real (live Arc balance + real payments) |
 | 8 | README `.env` instruction wrong | ✅ **CLOSED** — README "Going live" now documents the real behaviour: the backend does NOT auto-load `.env`; run it with the key inline or `node --env-file=mcp/.env mcp/dist/http.js`. Deploy path (Render env panel + `PORT`) also fixed |
 | 9 | `totalSupply()` reverts (minor) | ✅ **CLOSED** — dropped the reverting totalSupply read and the silently-null registeredAgents field |
-| 10 | Production maturity | ✅ **CLOSED** — deployability (Render + Vercel); tests + CI (node:test unit + full E2E, 34 checks, in GitHub Actions); durable persistence via Postgres (`DATABASE_URL`) with a JSON-file fallback for dev — verified surviving a restart. Set `DATABASE_URL` on Render for a fully durable deploy |
+| 10 | Production maturity | ✅ **CLOSED** — deployability (Render + Vercel); tests + CI (node:test unit + full E2E, 38 checks without a signer key, in GitHub Actions); durable persistence via Postgres (`DATABASE_URL`) with a JSON-file fallback for dev — verified surviving a restart. Set `DATABASE_URL` on Render for a fully durable deploy |
 
 **All 10 original gaps are now closed.**
 
@@ -46,7 +46,7 @@ Beyond the original gaps, this build also added: an **on-chain spend-policy vaul
 
 ## 🔁 Independent re-verification (2026-07-11)
 
-The "clean 10/10" above was re-checked objectively against the source (not the doc): frontend typecheck + backend build + 13 unit tests + full E2E (36/36, live Arc reads) + a live-backend probe. The 10 backend gaps hold up — the code is genuinely real and verified. But the re-check found **three residual items the original pass missed, all in the UI/auth layer** — since fixed and **live-verified on production**:
+The "clean 10/10" above was re-checked objectively against the source (not the doc): frontend typecheck + backend build + 13 unit tests + full E2E (38/38 without a signer key, live Arc reads) + a live-backend probe. The 10 backend gaps hold up — the code is genuinely real and verified. But the re-check found **three residual items the original pass missed, all in the UI/auth layer** — since fixed and **live-verified on production**:
 
 1. **Dashboard was still 100% mock** (`src/routes/app/Dashboard.tsx`) — the app's `/app` landing still rendered the exact figures the original review flagged as fake: reputation **`742`**, wallet **`$142.50`**, `153.50 USDC`, `18` settlements, `6/10` permissions, and a fabricated activity feed. The gap-#4 ("no more hardcoded 742") and gap-#7 ("Wallet real") fixes had corrected `AgentId`/`Wallet` but overlooked the Dashboard. **Fixed:** the Dashboard now reads real data (reputation, live Arc USDC balance, on-chain settlement count, real daily cap, real activity) with an em-dash + empty state when there's no data.
 

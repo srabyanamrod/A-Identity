@@ -8,11 +8,55 @@
  * serves the resource. No mocks: the price is real USDC, the check reads the chain,
  * and spent tx hashes are rejected (replay protection).
  */
+import { randomBytes } from 'node:crypto'
 import { CONTRACTS, ARC_RPC, ARC_EXPLORER } from './arc-contracts.js'
 import { loadSpentPayments, persistSpentPayment } from './storage.js'
 
 /** Price per call: 0.001 USDC (6 decimals). A true sub-cent nanopayment. */
 const PRICE = 1000n
+
+/** The single resource this rail sells. A redeemed payment is bound to this id. */
+export const X402_RESOURCE = '/api/x402/data'
+
+// ── request binding: a redeemed payment must answer a fresh server challenge ──────
+//
+// A bare "USDC Transfer to payTo of >= price" is not, on its own, bound to THIS
+// request: a client could present an unrelated transfer. We bind the redemption to
+// a server-issued, single-use, short-lived `nonce` for a named `resource`. The
+// client must first GET the 402 (which mints the nonce), then pay, then redeem with
+// that nonce — so a stockpiled/unrelated payment can't blind-unlock the resource.
+// In-memory + TTL: correct for the single backend instance we deploy; a horizontally
+// scaled deploy would move this to shared storage (see the SIWE/KYA nonce note).
+const NONCE_TTL_MS = 15 * 60 * 1000
+const issuedNonces = new Map<string, { resource: string; exp: number }>()
+
+function pruneNonces(now: number) {
+  for (const [n, v] of issuedNonces) if (v.exp <= now) issuedNonces.delete(n)
+}
+
+/** Mint a fresh single-use nonce bound to `resource`, returned in the 402 challenge. */
+export function issueX402Nonce(resource: string = X402_RESOURCE): string {
+  const now = Date.now()
+  pruneNonces(now)
+  const nonce = randomBytes(16).toString('hex')
+  issuedNonces.set(nonce, { resource, exp: now + NONCE_TTL_MS })
+  return nonce
+}
+
+/** True if `nonce` is a live, unconsumed challenge for `resource`. Does NOT consume it
+ *  (the payment may still be confirming, so the client retries with the same nonce). */
+export function x402NonceValid(nonce: string | undefined, resource: string = X402_RESOURCE): boolean {
+  if (!nonce) return false
+  const now = Date.now()
+  pruneNonces(now)
+  const v = issuedNonces.get(nonce)
+  return !!v && v.exp > now && v.resource === resource
+}
+
+/** Consume a nonce so a single challenge unlocks the resource exactly once. */
+export function consumeX402Nonce(nonce: string): void {
+  issuedNonces.delete(nonce)
+}
 
 /** Spent payment tx hashes — a payment can unlock the resource exactly once. Backed
  *  by durable storage (Postgres/JSON) so a restart can't reset replay protection. */
@@ -55,11 +99,13 @@ export async function x402PayTo(env: NodeJS.ProcessEnv = process.env): Promise<s
   return privateKeyToAccount(key as `0x${string}`).address.toLowerCase()
 }
 
-/** The 402 body: what to pay, to whom, on which asset/network. */
-export function paymentRequirements(payTo: string) {
+/** The 402 body: what to pay, to whom, on which asset/network, and the single-use
+ *  `nonce` that binds a later redemption to this challenge (echo it in X-Payment-Nonce). */
+export function paymentRequirements(payTo: string, nonce?: string) {
   return {
     x402Version: 1,
     error: 'payment required',
+    nonce,
     accepts: [
       {
         scheme: 'exact',
@@ -69,7 +115,8 @@ export function paymentRequirements(payTo: string) {
         decimals: 6,
         maxAmountRequired: PRICE.toString(),
         payTo,
-        resource: '/api/x402/data',
+        resource: X402_RESOURCE,
+        nonce,
         description: 'Premium: live Arc chain data, settled per request in USDC',
       },
     ],

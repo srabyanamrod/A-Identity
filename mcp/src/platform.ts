@@ -355,8 +355,14 @@ export async function anchorAgentOnchain(agentId: string, caller?: string) {
 
 // ── KYA (Know Your Agent): prove wallet control ──────────────────────────────────
 
-/** Ephemeral KYA challenges, keyed by agentId (in-memory; never persisted). */
-const kyaChallenges = new Map<string, string>()
+/**
+ * Ephemeral KYA challenges, keyed by agentId. In-memory + a short TTL, so a challenge
+ * can't be signed forever and stale entries can't accumulate. This is correct for the
+ * single backend instance we deploy; a horizontally-scaled deploy would move these to
+ * shared storage (a challenge issued by instance A must be verifiable by instance B).
+ */
+const KYA_CHALLENGE_TTL_MS = 10 * 60 * 1000
+const kyaChallenges = new Map<string, { nonce: string; exp: number }>()
 
 /** Start a KYA challenge: the agent signs this to prove it controls its wallet. */
 export function startKyaChallenge(
@@ -368,7 +374,7 @@ export function startKyaChallenge(
   if (!ownsAgent(agent, caller)) return { error: 'Forbidden: not the agent owner' }
   if (!agent.walletAddress) return { error: 'Agent has no wallet to prove; create or assign one first' }
   const nonce = randomBytes(16).toString('hex')
-  kyaChallenges.set(agentId, nonce)
+  kyaChallenges.set(agentId, { nonce, exp: Date.now() + KYA_CHALLENGE_TTL_MS })
   const message = `A-Identity KYA: prove control of ${agent.walletAddress}\nAgent: ${agentId}\nNonce: ${nonce}`
   return { address: agent.walletAddress, message }
 }
@@ -389,7 +395,9 @@ export async function verifyKya(
   if (!agent) return { error: 'Unknown agent' }
   if (!ownsAgent(agent, caller)) return { error: 'Forbidden: not the agent owner' }
   if (!agent.walletAddress) return { error: 'Agent has no wallet' }
-  const nonce = kyaChallenges.get(agentId)
+  const challenge = kyaChallenges.get(agentId)
+  if (challenge && challenge.exp <= Date.now()) kyaChallenges.delete(agentId)
+  const nonce = challenge && challenge.exp > Date.now() ? challenge.nonce : undefined
   if (!nonce || !message.includes(nonce)) return { error: 'Stale or missing challenge; request a new one' }
 
   const { verifyMessage } = await import('viem')

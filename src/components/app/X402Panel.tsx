@@ -25,6 +25,7 @@ type Accepts = {
   maxAmountRequired: string
   payTo: string
   description: string
+  nonce?: string
 }
 type Resource = {
   paid: boolean
@@ -54,9 +55,11 @@ export default function X402Panel() {
       const quote = await fetch(`${MCP_BASE}/api/x402/data`)
       if (quote.status === 501) throw new Error('x402 is not configured on the server.')
       if (quote.status !== 402) throw new Error(`Unexpected response: HTTP ${quote.status}`)
-      const reqs = (await quote.json()) as { accepts: Accepts[] }
+      const reqs = (await quote.json()) as { accepts: Accepts[]; nonce?: string }
       const accepts = reqs.accepts?.[0]
       if (!accepts) throw new Error('No payment requirements returned.')
+      // The server binds this redemption to a fresh single-use nonce; echo it back.
+      const nonce = reqs.nonce ?? accepts.nonce
       setReq(accepts)
 
       // 2. Pay the required USDC on Arc from the connected wallet (same EIP-6963
@@ -82,7 +85,9 @@ export default function X402Panel() {
       setPhase('verifying')
       let paid: Resource | null = null
       for (let i = 0; i < 20; i++) {
-        const pr = await fetch(`${MCP_BASE}/api/x402/data`, { headers: { 'X-Payment': txHash } })
+        const pr = await fetch(`${MCP_BASE}/api/x402/data`, {
+          headers: { 'X-Payment': txHash, ...(nonce ? { 'X-Payment-Nonce': nonce } : {}) },
+        })
         if (pr.status === 200) {
           paid = (await pr.json()) as Resource
           break

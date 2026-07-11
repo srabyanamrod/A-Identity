@@ -46,7 +46,12 @@ A payment is checked in depth — a limit you set is enforced in **three** ways:
    ceiling, payee allowlist, freeze, human-approval gate (00:00 UTC reset).
 2. **On-chain policy vault** (`mcp/contracts/AgentSpendPolicy.sol`) — a per-agent USDC contract
    that enforces the same policy **on Arc**: an over-limit `pay()` *reverts on-chain*. This is the
-   trustless source of truth; the server is only the pre-check + fallback.
+   trustless source of truth; the server is only the pre-check + fallback. The vault is deployed
+   with the human's real wallet as **`owner`** (freeze / override / withdraw) and, in this build,
+   the **server signer as the delegated `operator`** that calls `pay()` on the agent's behalf —
+   so the *limit* is trustless (the contract reverts regardless of who signs), while *initiating*
+   the payment is a delegated action. Roadmap: hand the `operator` role to an agent-held key /
+   Circle programmable wallet so the agent signs its own payments end-to-end.
 3. **Circle Agent Wallet** (`mcp/src/circle-agent.ts`) — a hosted, Developer-Controlled wallet
    whose policy engine screens each transfer at the wallet layer (sanctions / allow-block / freeze).
 
@@ -84,7 +89,8 @@ fallback, so one layer failing never fabricates a success.
   `/mcp` JSON-RPC for agents. Durable state via Postgres (`DATABASE_URL`), JSON-file fallback for dev.
 - **Auth** — Sign-In with Ethereum (wallet) + email magic link (Resend) are *verified*; a plain guest
   session is read-only. Agent ownership is bound to a verified identity.
-- **Tests / CI** — `node:test` unit + a full E2E (49 checks, real Arc reads/writes) in GitHub Actions.
+- **Tests / CI** — `node:test` unit (13) + a full E2E (**38 checks** green without a signer key; the
+  on-chain write steps run and add more when a funded `ARC_SIGNER_KEY` is present) in GitHub Actions.
 
 ## Honesty guardrails (we say exactly what's true)
 
@@ -92,4 +98,8 @@ fallback, so one layer failing never fabricates a success.
   **operator/wallet-proof attestation, not** an independent third-party audit.
 - **Circle** *screens* transfers; it does **not** enforce the USD spend cap — the server + the on-chain
   vault do.
+- **Operator custody**: today the **server signer** is the vault `operator` that submits `pay()` on the
+  agent's behalf (a delegated action); the human `owner` is the user's own wallet. The *limit* is
+  trustless regardless (the contract reverts), but the agent does not yet sign its own payments —
+  that's the roadmap (agent-held key / Circle programmable wallet). We say this plainly.
 - **Testnet**: Arc testnet, test USDC. Real tech, test money.

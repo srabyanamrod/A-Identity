@@ -415,6 +415,8 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
   const [a2h, setA2h] = useState(false)
 
   const [wallet, setWallet] = useState<{ address: string; privateKey: string } | null>(null)
+  const [showKey, setShowKey] = useState(false)
+  const [copiedKey, setCopiedKey] = useState(false)
   const [walletBusy, setWalletBusy] = useState(false)
   const [submitBusy, setSubmitBusy] = useState(false)
   const [done, setDone] = useState<string | null>(null)
@@ -736,10 +738,41 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
           <div className="mt-2 rounded-xl border border-[#2775CA]/25 bg-[#2775CA]/[0.04] p-4">
             <div className="text-[11px] font-bold text-ink/50">Address</div>
             <div className="break-all font-mono text-xs text-ink">{wallet.address}</div>
-            <div className="mt-2 text-[11px] font-bold text-red-600">
-              Private key (generated in your browser — the server never sees it)
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <div className="text-[11px] font-bold text-red-600">
+                Private key (generated in your browser — the server never sees it)
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowKey((s) => !s)}
+                  className="text-[11px] font-semibold text-[#2775CA] hover:underline"
+                >
+                  {showKey ? 'Hide' : 'Reveal'}
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(wallet.privateKey)
+                      setCopiedKey(true)
+                      setTimeout(() => setCopiedKey(false), 1500)
+                    } catch {
+                      setShowKey(true) // clipboard blocked — reveal so it can be copied by hand
+                    }
+                  }}
+                  className="text-[11px] font-semibold text-[#2775CA] hover:underline"
+                >
+                  {copiedKey ? 'Copied' : 'Copy'}
+                </button>
+              </div>
             </div>
-            <div className="break-all font-mono text-xs text-ink/70">{wallet.privateKey}</div>
+            <div className="break-all font-mono text-xs text-ink/70">
+              {showKey ? wallet.privateKey : '•'.repeat(48)}
+            </div>
+            <p className="mt-1 text-[11px] text-ink/45">
+              Save it now — it is shown once and never stored. Reveal only somewhere no one can see your screen.
+            </p>
             <a
               href="https://faucet.circle.com"
               target="_blank"

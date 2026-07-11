@@ -50,6 +50,26 @@ Keep the camera on this. Every step produces something real and verifiable.
 
 ---
 
+## ⚠️ Vault choreography note (read before recording)
+
+The vault can show **either** of two things per agent, but not both on the *same* vault:
+
+- **owner ≠ operator separation** — deploy the vault with the human's real wallet as `owner`
+  and the server signer as `operator` (the default). Verifiable on arcscan: `owner` and
+  `operator` are different addresses. But because the server can't sign as the human `owner`,
+  a human-approved override settles by **direct USDC transfer**, not through `ownerPay()`.
+- **vault-override money-shot** (steps 5–6) — the human approval settles *through the vault*
+  via `ownerPay()`. For the server to sign that, the vault's `owner` must equal the signer
+  (`owner == operator`), so this vault does **not** show the address separation.
+
+**So use two agents in the demo:** Agent A to show the on-chain `owner ≠ operator` separation
+(name it in the walkthrough, show the two addresses on arcscan); Agent B for the over-limit →
+revert → human-override-settles-through-vault money-shot. Don't try to show both on one vault —
+the code deliberately falls back to direct settlement in the separated case, and the reason is
+honest (the server isn't the human owner). Say that out loud if asked.
+
+---
+
 ## Depth reel (spend ~0:30, fast montage — "and it also does…")
 
 Name these; don't dwell. They prove range, not the thesis.
@@ -67,6 +87,11 @@ Name these; don't dwell. They prove range, not the thesis.
 - **Testnet, real tech, test money.** Say it plainly.
 - **We say exactly what's true.** KYA = wallet-proof, not audit. Circle *screens*; the
   USD cap is enforced by our server + the vault. This honesty is a feature — lead with it.
+- **"Who actually signs the payment?" (have this ready).** *"Today the server signer is the
+  vault's delegated `operator`, so it submits `pay()` on the agent's behalf; the human `owner`
+  is the user's own wallet. The **limit is trustless either way** — the contract reverts an
+  over-limit payment no matter who signs. Handing the `operator` role to an agent-held key /
+  Circle programmable wallet, so the agent signs end-to-end, is the next step on the roadmap."*
 - **It's live.** `https://a-identity.xyz` (frontend) · `https://a-identity-backend.onrender.com`
   (backend). Live contract reads, verifiable txs, CI + a full E2E.
 
