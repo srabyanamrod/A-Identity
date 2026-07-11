@@ -10,7 +10,7 @@ import {
   Star,
 } from 'lucide-react'
 import { useAuth } from '../../store/auth'
-import { useMcpChains, useMcpHealth } from '../../hooks/useMcp'
+import { useMcpHealth } from '../../hooks/useMcp'
 import { CHAINS } from '../../lib/chains'
 
 import { MCP_BASE } from '../../lib/mcpBase'
@@ -38,15 +38,21 @@ function ago(iso: string): string {
 
 export default function Dashboard() {
   const user = useAuth((s) => s.user)
-  const mcpOnline = useMcpHealth()
-  const { chains: mcpChains, loading: chainsLoading } = useMcpChains()
-  const mcpChainById = Object.fromEntries(mcpChains.map((c) => [c.id, c]))
+  const mcp = useMcpHealth() // 'checking' | 'waking' | 'online' | 'offline'
+
+  // Cold-start-aware MCP badge: a free-tier backend can take ~40s to wake.
+  const mcpTone =
+    mcp === 'online' ? 'bg-emerald-50 text-emerald-700' : mcp === 'offline' ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-600'
+  const mcpDot = mcp === 'online' ? 'bg-emerald-400' : mcp === 'offline' ? 'bg-red-400' : 'bg-amber-400'
+  const mcpLabel =
+    mcp === 'online' ? 'MCP live' : mcp === 'waking' ? 'Backend waking up…' : mcp === 'checking' ? 'Connecting…' : 'MCP offline'
 
   // Real data for the user's first agent (empty until the backend answers).
   const [agent, setAgent] = useState<Agent | null>(null)
   const [rep, setRep] = useState<number | null>(null)
   const [balance, setBalance] = useState<number | null>(null)
   const [settlements, setSettlements] = useState<number | null>(null)
+  const [agentTotal, setAgentTotal] = useState<number | null>(null)
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
@@ -56,8 +62,9 @@ export default function Dashboard() {
         const list = await fetch(`${MCP_BASE}/api/platform-agents`, { signal: AbortSignal.timeout(6000) }).then((r) =>
           r.json(),
         )
-        const first: Agent | undefined = pickPrimaryAgent(list.agents)
         if (cancelled) return
+        setAgentTotal(Array.isArray(list.agents) ? list.agents.length : 0)
+        const first: Agent | undefined = pickPrimaryAgent(list.agents)
         if (!first) return
         setAgent(first)
         const [repRes, ixRes] = await Promise.all([
@@ -130,22 +137,12 @@ export default function Dashboard() {
             Your agent console. Everything your agent needs to act, with you in the tower.
           </p>
         </div>
-        {/* MCP live indicator */}
+        {/* MCP live indicator (cold-start aware) */}
         <div
-          className={`mt-1 flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${
-            mcpOnline === null
-              ? 'bg-ink/5 text-ink/30'
-              : mcpOnline
-                ? 'bg-emerald-50 text-emerald-700'
-                : 'bg-red-50 text-red-500'
-          }`}
+          className={`mt-1 flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${mcpTone}`}
         >
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${
-              mcpOnline === null ? 'bg-ink/20' : mcpOnline ? 'bg-emerald-400' : 'bg-red-400'
-            }`}
-          />
-          {mcpOnline === null ? 'Connecting MCP...' : mcpOnline ? 'MCP live' : 'MCP offline'}
+          <span className={`h-1.5 w-1.5 rounded-full ${mcpDot} ${mcp === 'waking' || mcp === 'checking' ? 'animate-pulse' : ''}`} />
+          {mcpLabel}
         </div>
       </div>
 
@@ -230,9 +227,7 @@ export default function Dashboard() {
           {/* Multi-chain network panel (live) */}
           <h3 className="mb-3 mt-6 font-semibold">Network</h3>
           <div className="grid gap-2 sm:grid-cols-3">
-            {CHAINS.map((c) => {
-              const mc = mcpChainById[c.id]
-              return (
+            {CHAINS.map((c) => (
                 <div key={c.id} className="rounded-xl border border-ink/8 bg-cream/50 p-3">
                   <div className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full" style={{ background: c.color }} />
@@ -245,7 +240,11 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <div className="mt-2 text-[11px] leading-relaxed text-ink/45">
-                    {chainsLoading ? '...' : mc ? `${mc.agentCount} agent${mc.agentCount === 1 ? '' : 's'}` : 'No data yet'}
+                    {c.id === 'arc'
+                      ? agentTotal == null
+                        ? '…'
+                        : `${agentTotal} live agent${agentTotal === 1 ? '' : 's'}`
+                      : 'no live agents yet'}
                   </div>
                   {c.explorer && (
                     <a
@@ -258,8 +257,7 @@ export default function Dashboard() {
                     </a>
                   )}
                 </div>
-              )
-            })}
+              ))}
           </div>
         </div>
 
