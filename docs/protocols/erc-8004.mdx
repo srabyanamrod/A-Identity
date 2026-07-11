@@ -27,8 +27,8 @@ exists.
 {
   "agentId": "eip155:1:8004/1",
   "owner": "0xA11CE...",
-  "domain": "research.a-identity.dev",
-  "registrationUri": "https://agents.a-identity.dev/1/registration.json"
+  "domain": "research.a-identity.xyz",
+  "registrationUri": "https://agents.a-identity.xyz/1/registration.json"
 }
 ```
 
@@ -37,7 +37,7 @@ exists.
 Use the MCP server or the SDK to resolve an identity.
 
 ```ts
-const passport = await identity.resolve("research.a-identity.dev")
+const passport = await identity.resolve("research.a-identity.xyz")
 // { found: true, agent: { agentId, owner, valid, ... } }
 ```
 

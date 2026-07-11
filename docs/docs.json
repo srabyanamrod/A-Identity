@@ -60,12 +60,12 @@
     "primary": {
       "type": "button",
       "label": "Get Your Agent ID",
-      "href": "https://a-identity.dev/signup"
+      "href": "https://a-identity.xyz/signup"
     }
   },
   "footer": {
     "socials": {
-      "website": "https://a-identity.dev"
+      "website": "https://a-identity.xyz"
     }
   }
 }
