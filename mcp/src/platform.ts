@@ -694,9 +694,12 @@ export async function getAgentTreasury(
 ): Promise<{ error: string } | (TreasuryPreview & { autoYieldEnabled: boolean; authorizedAt?: string })> {
   const agent = state.agents.find((a) => a.id === agentId)
   if (!agent) return { error: 'Unknown agent' }
-  if (!agent.walletAddress) return { error: 'Agent has no wallet yet; create or assign one first' }
+  // The agent's idle stablecoin lives in its own wallet, or in its Circle Agent Wallet
+  // when that's the funded one. Read wherever the balance actually is.
+  const address = agent.walletAddress ?? agent.circleWalletAddress
+  if (!address) return { error: 'Agent has no wallet yet; create one or provision a Circle wallet first' }
   const cap = capUsd ?? agent.treasury?.capUsd ?? DEFAULT_YIELD_CAP_USD
-  const preview = await previewTreasury(agent.walletAddress, cap)
+  const preview = await previewTreasury(address, cap)
   return { ...preview, autoYieldEnabled: agent.treasury?.autoYieldEnabled ?? false, authorizedAt: agent.treasury?.authorizedAt }
 }
 
@@ -714,10 +717,11 @@ export async function startAgentAutoYield(
   const agent = state.agents.find((a) => a.id === agentId)
   if (!agent) return { error: 'Unknown agent' }
   if (!ownsAgent(agent, caller)) return { error: 'Forbidden: not the agent owner' }
-  if (!agent.walletAddress) return { error: 'Agent has no wallet yet; create or assign one first' }
+  const address = agent.walletAddress ?? agent.circleWalletAddress
+  if (!address) return { error: 'Agent has no wallet yet; create one or provision a Circle wallet first' }
   const cap = Math.max(0, capUsd)
 
-  const execution = await startAutoYield(agent.walletAddress, cap)
+  const execution = await startAutoYield(address, cap)
   agent.treasury = { autoYieldEnabled: true, capUsd: cap, authorizedAt: new Date().toISOString() }
   pushActivity(
     agent,
