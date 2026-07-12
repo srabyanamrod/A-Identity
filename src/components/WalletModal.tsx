@@ -112,7 +112,7 @@ export default function WalletModal({
                   <Wallet size={22} className="text-ink/50" />
                 )}
                 <span className="flex-1 text-sm font-semibold text-ink">{w.name}</span>
-                {busy === w.id && <span className="text-xs text-ink/45">Connecting…</span>}
+                {busy === w.id && <span className="text-xs text-ink/45">Connecting</span>}
               </button>
             ))}
             {wcOn && (
@@ -126,7 +126,7 @@ export default function WalletModal({
                 <span className="flex-1 text-sm font-semibold text-ink">
                   WalletConnect <span className="text-ink/40">(mobile)</span>
                 </span>
-                {busy === 'wc' && <span className="text-xs text-ink/45">Opening…</span>}
+                {busy === 'wc' && <span className="text-xs text-ink/45">Opening</span>}
               </button>
             )}
           </div>

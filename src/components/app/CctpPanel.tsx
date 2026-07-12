@@ -81,7 +81,7 @@ export default function CctpPanel() {
           className="inline-flex items-center gap-1.5 rounded-full bg-[#2775CA] px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:opacity-50"
         >
           {busy ? <Loader2 size={15} className="animate-spin" /> : <Flame size={15} />}
-          {busy ? 'Burning & minting…' : 'Bridge USDC (CCTP)'}
+          {busy ? 'Burning & minting' : 'Bridge USDC (CCTP)'}
         </button>
         <span className="text-[11px] text-ink/40">min 1 USDC (CCTPv2 fee)</span>
       </div>

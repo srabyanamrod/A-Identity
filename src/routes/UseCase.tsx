@@ -60,7 +60,7 @@ export default function UseCase() {
         <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
           <motion.div {...reveal}>
             <div
-              className="text-[11px] font-bold uppercase tracking-widest"
+              className="text-[11px] font-bold tracking-widest"
               style={{ color: uc.accent }}
             >
               {uc.service}
@@ -104,7 +104,7 @@ export default function UseCase() {
           <aside>
             <div className="lg:sticky lg:top-24">
               <div className="rounded-2xl border border-ink/12 bg-white p-6">
-                <div className="text-[11px] font-bold uppercase tracking-widest text-ink/50">
+                <div className="text-[11px] font-bold tracking-widest text-ink/50">
                   Products used
                 </div>
                 <div className="mt-3">
@@ -123,7 +123,7 @@ export default function UseCase() {
               className="border-l-2 pl-6 text-xl font-semibold leading-relaxed text-ink sm:text-2xl"
               style={{ borderColor: uc.accent }}
             >
-              "{uc.principle}"
+              &lsquo;{uc.principle}&rsquo;
               <footer className="mt-3 text-sm font-normal text-ink/50">
                 The A-Identity principle
               </footer>
@@ -205,7 +205,7 @@ export default function UseCase() {
                   }}
                 />
                 <div className="relative p-6">
-                  <div className="text-[11px] font-bold uppercase tracking-widest text-white/60">
+                  <div className="text-[11px] font-bold tracking-widest text-white/60">
                     {u.service}
                   </div>
                   <h3 className="mt-1.5 text-xl font-bold leading-snug tracking-tight text-white">

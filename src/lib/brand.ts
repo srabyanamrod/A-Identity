@@ -15,9 +15,8 @@ export const APP_TAGLINE = 'The passport and wallet for the agentic economy'
  * The fallback is the LIVE Mintlify docs site, so links resolve even if the env
  * var is unset. Prod (Vercel) sets VITE_DOCS_URL to the same value.
  */
-export const DOCS_URL =
-  (import.meta.env.VITE_DOCS_URL as string | undefined)?.replace(/\/$/, '') ??
-  'https://a-identity.mintlify.site'
+const DOCS_ENV = (import.meta.env.VITE_DOCS_URL as string | undefined)?.trim()
+export const DOCS_URL = DOCS_ENV ? DOCS_ENV.replace(/\/$/, '') : 'https://a-identity.mintlify.site'
 
 /** The three open protocols A-Identity connects, each with its own color. */
 export const PROTOCOLS = [

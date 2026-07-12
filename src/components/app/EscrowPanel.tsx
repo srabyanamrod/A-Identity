@@ -82,7 +82,7 @@ export default function EscrowPanel() {
           className="inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:opacity-50"
         >
           {busy ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
-          {busy ? 'Running lifecycle…' : 'Run escrow job'}
+          {busy ? 'Running lifecycle' : 'Run escrow job'}
         </button>
       </div>
 

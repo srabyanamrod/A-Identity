@@ -32,12 +32,12 @@ export default function UseCases() {
       <div className="mx-auto max-w-[1100px]">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <motion.span {...reveal} className="text-sm font-semibold tracking-wide text-accent">
+            <motion.span {...reveal} className="text-base font-semibold tracking-wide text-accent">
               Use Cases
             </motion.span>
             <motion.h2
               {...reveal}
-              className="mt-4 max-w-2xl text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl"
+              className="mt-4 max-w-2xl text-2xl font-bold leading-tight tracking-tight text-ink sm:text-3xl"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
               What agents actually do here.
@@ -92,7 +92,7 @@ export default function UseCases() {
               />
               <div className="relative p-7">
                 <div
-                  className="text-[11px] font-bold uppercase tracking-widest"
+                  className="text-[11px] font-bold tracking-widest"
                   style={{ color: uc.accent === '#7342E2' ? '#B79DF5' : undefined }}
                 >
                   <span style={{ color: 'rgba(255,255,255,0.65)' }}>{uc.service}</span>

@@ -58,7 +58,7 @@ export default function AutopilotPanel() {
     }
   }
 
-  const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '-')
+  const short = (a?: string) => (a ? `${a.slice(0, 6)}...${a.slice(-4)}` : '-')
 
   return (
     <div className="mt-8 rounded-2xl border-2 border-accent/30 bg-accent/[0.03] p-6">
@@ -86,7 +86,7 @@ export default function AutopilotPanel() {
           className="inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:opacity-50"
         >
           {busy ? <Loader2 size={15} className="animate-spin" /> : <Bot size={15} />}
-          {busy ? 'Agent running…' : 'Run the agent'}
+          {busy ? 'Agent running' : 'Run the agent'}
         </button>
       </div>
 
@@ -120,7 +120,7 @@ export default function AutopilotPanel() {
                 Payment #{p.n}: ${p.amountUsd.toFixed(3)}
               </span>
               <span className="text-xs text-ink/45">cumulative ${p.cumulativeUsd.toFixed(3)}</span>
-              {p.transaction && <span className="ml-auto font-mono text-[10px] text-ink/40">batch {p.transaction.slice(0, 8)}…</span>}
+              {p.transaction && <span className="ml-auto font-mono text-[10px] text-ink/40">batch {p.transaction.slice(0, 8)}...</span>}
               {p.reason && <span className="ml-auto text-[11px] text-red-600">{p.reason}</span>}
             </div>
           ))}
@@ -143,7 +143,7 @@ export default function AutopilotPanel() {
               {result.protocolFee.settled ? ', settled' : result.protocolFee.note ? `, ${result.protocolFee.note}` : ''}
             </span>
             {result.protocolFee.settled && result.protocolFee.transaction && (
-              <span className="ml-auto font-mono text-[10px] text-ink/40">batch {result.protocolFee.transaction.slice(0, 8)}…</span>
+              <span className="ml-auto font-mono text-[10px] text-ink/40">batch {result.protocolFee.transaction.slice(0, 8)}...</span>
             )}
           </div>
         </div>

@@ -250,12 +250,12 @@ export default function Web25Layer() {
   return (
     <section className="w-full bg-white px-5 py-20 sm:px-8 sm:py-28">
       <div className="mx-auto max-w-[1100px]">
-        <motion.span {...reveal} className="text-sm font-semibold tracking-wide text-accent">
+        <motion.span {...reveal} className="text-base font-semibold tracking-wide text-accent">
           The Web2.5 Layer
         </motion.span>
         <motion.h2
           {...reveal}
-          className="mt-4 max-w-2xl text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl"
+          className="mt-4 max-w-2xl text-2xl font-bold leading-tight tracking-tight text-ink sm:text-3xl"
           style={{ fontFamily: 'var(--font-heading)' }}
         >
           Verify first. Then pay, at machine speed.

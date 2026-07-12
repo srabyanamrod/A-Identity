@@ -71,7 +71,7 @@ export function getInjectedWallets(): WalletOption[] {
 /**
  * The best available injected EIP-1193 provider: EIP-6963 discovery first, legacy
  * `window.ethereum` as a fallback. Use this instead of reaching into `window.ethereum`
- * directly, so every surface (login, x402 payment, …) selects wallets the same way.
+ * directly, so every surface (login, x402 payment, and more) selects wallets the same way.
  */
 export function getActiveInjectedProvider(): Eip1193 | null {
   refreshInjectedWallets()

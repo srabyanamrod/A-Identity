@@ -87,7 +87,7 @@ export default function GatewayPanel() {
           className="inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:opacity-50"
         >
           {busy ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
-          {busy ? 'Moving Arc → Base…' : 'Send USDC to Base (gasless)'}
+          {busy ? 'Moving Arc to Base' : 'Send USDC to Base (gasless)'}
         </button>
       </div>
 
@@ -117,7 +117,7 @@ export default function GatewayPanel() {
             <Row
               label={`Forwarded ${result.amountUsd} USDC → ${result.transfer.destination}`}
               value={result.transfer.forwardingFee ? `fee ~$${result.transfer.forwardingFee}` : undefined}
-              badge={<span className="font-mono text-[10px] text-ink/40">{result.transfer.transferId?.slice(0, 8)}…</span>}
+              badge={<span className="font-mono text-[10px] text-ink/40">{result.transfer.transferId?.slice(0, 8)}...</span>}
             />
           )}
           {result.baseMint && (
@@ -134,7 +134,7 @@ export default function GatewayPanel() {
                     gasless
                   </>
                 ) : (
-                  'Transfer submitted, minting on Base…'
+                  'Transfer submitted, minting on Base'
                 )}
               </span>
               <a

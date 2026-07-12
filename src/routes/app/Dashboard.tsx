@@ -51,7 +51,7 @@ export default function Dashboard() {
     mcp === 'online' ? 'bg-emerald-50 text-emerald-700' : mcp === 'offline' ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-600'
   const mcpDot = mcp === 'online' ? 'bg-emerald-400' : mcp === 'offline' ? 'bg-red-400' : 'bg-amber-400'
   const mcpLabel =
-    mcp === 'online' ? 'MCP live' : mcp === 'waking' ? 'Backend waking up…' : mcp === 'checking' ? 'Connecting…' : 'MCP offline'
+    mcp === 'online' ? 'MCP live' : mcp === 'waking' ? 'Backend waking up' : mcp === 'checking' ? 'Connecting' : 'MCP offline'
 
   // Real data for the user's first agent (empty until the backend answers).
   const [agent, setAgent] = useState<Agent | null>(null)
@@ -116,7 +116,7 @@ export default function Dashboard() {
         ? 'No wallet yet'
         : balance != null
           ? `${balance.toFixed(4)} USDC on Arc`
-          : 'Balance loading…',
+          : 'Balance loading',
       ok: (balance ?? 0) > 0,
       to: '/app/wallet',
       icon: CreditCard,
@@ -251,7 +251,7 @@ export default function Dashboard() {
                   <div className="mt-2 text-[11px] leading-relaxed text-ink/45">
                     {c.id === 'arc'
                       ? agentTotal == null
-                        ? '…'
+                        ? '-'
                         : `${agentTotal} live agent${agentTotal === 1 ? '' : 's'}`
                       : 'no live agents yet'}
                   </div>
@@ -287,7 +287,7 @@ export default function Dashboard() {
             </ul>
           ) : (
             <p className="text-sm text-ink/45">
-              {loaded ? 'No activity yet. Register an agent and make a payment.' : 'Loading…'}
+              {loaded ? 'No activity yet. Register an agent and make a payment.' : 'Loading'}
             </p>
           )}
           <Link

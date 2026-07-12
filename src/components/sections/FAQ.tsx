@@ -17,7 +17,7 @@ type Group = { category: string; items: Item[] }
 // Ordered general to specific: basics, how it works, who and why, for builders.
 const GROUPS: Group[] = [
   {
-    category: 'The basics',
+    category: 'The Basics',
     items: [
       {
         q: `What is A-Identity?`,
@@ -43,7 +43,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    category: 'How it works',
+    category: 'How It Works',
     items: [
       {
         q: `How do agent-to-agent payments work?`,
@@ -76,7 +76,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    category: 'Who it is for, and why now',
+    category: 'Who It Is For, and Why Now',
     items: [
       {
         q: `Who is A-Identity built for?`,
@@ -102,7 +102,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    category: 'For builders',
+    category: 'For Builders',
     items: [
       {
         q: `How can builders use A-Identity?`,
@@ -130,12 +130,12 @@ export default function FAQ() {
   return (
     <section id="faq" className="w-full bg-cream px-5 py-20 sm:px-8 sm:py-28">
       <div className="mx-auto max-w-[820px]">
-        <motion.span {...reveal} className="text-sm font-semibold tracking-wide text-accent">
+        <motion.span {...reveal} className="text-base font-semibold tracking-wide text-accent">
           FAQ
         </motion.span>
         <motion.h2
           {...reveal}
-          className="mt-4 text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl"
+          className="mt-4 text-2xl font-bold leading-tight tracking-tight text-ink sm:text-3xl"
           style={{ fontFamily: 'var(--font-heading)' }}
         >
           Questions humans (still) ask.
@@ -146,7 +146,7 @@ export default function FAQ() {
             <div key={group.category}>
               <motion.h3
                 {...reveal}
-                className="mb-3 text-xs font-bold uppercase tracking-widest text-ink/40"
+                className="mb-3 text-xs font-bold tracking-widest text-ink/40"
               >
                 {group.category}
               </motion.h3>

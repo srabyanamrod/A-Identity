@@ -21,12 +21,12 @@ export default function BlogTeaser() {
       <div className="mx-auto max-w-[1100px]">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <motion.span {...reveal} className="text-sm font-semibold tracking-wide text-accent">
+            <motion.span {...reveal} className="text-base font-semibold tracking-wide text-accent">
               From the Blog
             </motion.span>
             <motion.h2
               {...reveal}
-              className="mt-4 max-w-2xl text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl"
+              className="mt-4 max-w-2xl text-2xl font-bold leading-tight tracking-tight text-ink sm:text-3xl"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
               Notes from the agentic economy.

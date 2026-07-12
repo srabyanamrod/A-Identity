@@ -152,7 +152,7 @@ export default function AuthScreen({ mode }: AuthScreenProps) {
               disabled={magicBusy}
               className="mt-2 inline-flex items-center justify-center gap-2 rounded-full bg-accent px-5 py-3.5 text-sm font-semibold text-white transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
             >
-              {magicBusy ? 'Sending…' : 'Email me a sign-in link'}
+              {magicBusy ? 'Sending' : 'Email me a sign-in link'}
               {!magicBusy && <ArrowRight size={18} />}
             </button>
             {magicError && <p className="text-center text-xs text-red-600">{magicError}</p>}

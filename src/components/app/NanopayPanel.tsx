@@ -54,7 +54,7 @@ export default function NanopayPanel() {
   }
 
   const settled = result?.executed && result.settle.success
-  const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '-')
+  const short = (a?: string) => (a ? `${a.slice(0, 6)}...${a.slice(-4)}` : '-')
 
   return (
     <div className="mt-8 rounded-2xl border border-ink/10 bg-white p-6">
@@ -93,7 +93,7 @@ export default function NanopayPanel() {
           className="inline-flex items-center gap-1.5 rounded-full bg-[#7342E2] px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:opacity-50"
         >
           {busy ? <Loader2 size={15} className="animate-spin" /> : <Zap size={15} />}
-          {busy ? 'Signing & settling…' : 'Pay gasless (nanopayment)'}
+          {busy ? 'Signing & settling' : 'Pay gasless (nanopayment)'}
         </button>
       </div>
 
@@ -133,7 +133,7 @@ export default function NanopayPanel() {
               )}
             </span>
             {settled && result.settle.transaction && (
-              <span className="ml-auto font-mono text-[10px] text-ink/40">batch {result.settle.transaction.slice(0, 8)}…</span>
+              <span className="ml-auto font-mono text-[10px] text-ink/40">batch {result.settle.transaction.slice(0, 8)}...</span>
             )}
             {result.settle.explorerUrl && (
               <a

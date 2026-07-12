@@ -39,7 +39,7 @@ export default function AuthCallback() {
           </>
         ) : (
           <>
-            <h1 className="text-lg font-bold text-ink">Signing you in…</h1>
+            <h1 className="text-lg font-bold text-ink">Signing you in</h1>
             <p className="mt-2 text-sm text-ink/60">Verifying your link.</p>
           </>
         )}

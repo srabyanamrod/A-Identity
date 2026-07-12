@@ -38,12 +38,12 @@ export default function Vision() {
   return (
     <section className="w-full px-5 py-20 sm:px-8 sm:py-28" style={{ background: '#F4F1FB' }}>
       <div className="mx-auto max-w-[1100px]">
-        <motion.span {...reveal} className="text-sm font-semibold tracking-wide text-accent">
+        <motion.span {...reveal} className="text-base font-semibold tracking-wide text-accent">
           Where This Goes
         </motion.span>
         <motion.h2
           {...reveal}
-          className="mt-4 max-w-2xl text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl"
+          className="mt-4 max-w-2xl text-2xl font-bold leading-tight tracking-tight text-ink sm:text-3xl"
           style={{ fontFamily: 'var(--font-heading)' }}
         >
           Built for a trillion-dollar agentic economy.

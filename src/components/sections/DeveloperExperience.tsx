@@ -35,12 +35,12 @@ export default function DeveloperExperience() {
     <section id="developers" className="w-full bg-ink px-5 py-20 text-white sm:px-8 sm:py-28">
       <div className="mx-auto grid max-w-[1100px] gap-12 lg:grid-cols-2 lg:items-center">
         <div>
-          <motion.span {...reveal} className="text-sm font-semibold tracking-wide text-accent">
+          <motion.span {...reveal} className="text-base font-semibold tracking-wide text-accent">
             Agent Experience (AX and DX)
           </motion.span>
           <motion.h2
             {...reveal}
-            className="mt-4 text-3xl font-bold leading-tight tracking-tight sm:text-4xl"
+            className="mt-4 text-2xl font-bold leading-tight tracking-tight sm:text-3xl"
             style={{ fontFamily: 'var(--font-heading)' }}
           >
             Integrate in "Describe and Leave" mode.
