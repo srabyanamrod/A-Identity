@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import {
   ArrowLeftRight,
   ArrowUpRight,
@@ -132,7 +133,12 @@ export default function Dashboard() {
   const activity = agent?.activity ? [...agent.activity].slice(-6).reverse() : []
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
+      className="mx-auto max-w-5xl"
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Welcome back, {user?.name ?? 'there'}.</h2>
@@ -194,13 +200,13 @@ export default function Dashboard() {
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         {/* Agent status */}
-        <div className="rounded-2xl border border-ink/10 bg-white p-6 lg:col-span-2">
+        <div className="rounded-2xl border border-black/[0.07] bg-white p-6 shadow-[0_1px_3px_rgba(16,24,40,0.04)] lg:col-span-2">
           <h3 className="mb-4 font-semibold">Agent status</h3>
           <ul className="flex flex-col gap-3">
             {statusItems.map(({ label, detail, ok, to, icon: Icon }) => (
               <li
                 key={label}
-                className="flex items-center justify-between gap-3 rounded-xl border border-ink/8 bg-cream/50 px-4 py-3"
+                className="flex items-center justify-between gap-3 rounded-xl border border-ink/8 bg-cream/50 px-4 py-3 transition-colors hover:border-ink/15 hover:bg-cream"
               >
                 <div className="flex items-center gap-3">
                   <div className="grid h-8 w-8 place-items-center rounded-lg bg-accent/10 text-accent">
@@ -265,7 +271,7 @@ export default function Dashboard() {
         </div>
 
         {/* Activity feed (real agent activity) */}
-        <div className="rounded-2xl border border-ink/10 bg-white p-6">
+        <div className="rounded-2xl border border-black/[0.07] bg-white p-6 shadow-[0_1px_3px_rgba(16,24,40,0.04)]">
           <h3 className="mb-4 font-semibold">Recent activity</h3>
           {activity.length > 0 ? (
             <ul className="flex flex-col gap-4">
@@ -292,7 +298,7 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -312,12 +318,12 @@ function StatCard({
   return (
     <Link
       to={to}
-      className="group flex flex-col rounded-2xl border border-ink/10 bg-white p-5 transition-shadow hover:shadow-md"
+      className="group flex flex-col rounded-2xl border border-black/[0.07] bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/30 hover:shadow-[0_10px_28px_rgba(16,24,40,0.08)]"
     >
-      <div className="mb-3 grid h-9 w-9 place-items-center rounded-xl bg-accent/10 text-accent">
+      <div className="mb-3 grid h-9 w-9 place-items-center rounded-xl bg-accent/10 text-accent transition-transform duration-200 group-hover:scale-110">
         <Icon size={18} />
       </div>
-      <div className="text-2xl font-bold tracking-tight">{value}</div>
+      <div className="text-2xl font-bold tracking-tight tabular-nums">{value}</div>
       <div className="text-sm font-medium text-ink/70">{label}</div>
       <div className="mt-0.5 text-xs text-ink/40">{sub}</div>
     </Link>
