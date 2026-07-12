@@ -107,7 +107,7 @@ export default function AgentId() {
   const registeredLabel = realAgent?.createdAt
     ? new Date(realAgent.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
     : liveAgent?.registeredAt ?? '-'
-  const networkLabel = realAgent ? 'Arc testnet' : '5 chains'
+  const networkLabel = 'Arc testnet'
   // Honest progress: only a REAL agent advances the stepper. The illustrative sample
   // (shown when the account has no agent yet) sits at stage 0: the user hasn't
   // registered anything, so nothing is "done".
@@ -172,7 +172,7 @@ export default function AgentId() {
           }}
         />
         <div className="relative flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <div className="mb-3 flex items-center gap-2">
               <Fingerprint size={18} className="opacity-75" />
               <span className="text-sm font-semibold opacity-75">A-Identity</span>
@@ -180,7 +180,7 @@ export default function AgentId() {
             <div className="text-xl font-bold tracking-tight">
               {agentName}
             </div>
-            <div className="mt-1 font-mono text-sm opacity-60">
+            <div className="mt-1 break-all font-mono text-sm opacity-60">
               {agentIdLabel}
             </div>
             <div className="mt-3 text-xs opacity-60">Category</div>

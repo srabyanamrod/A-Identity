@@ -58,7 +58,7 @@ export const USE_CASES: UseCase[] = [
       {
         heading: 'How it works',
         body: [
-          'The agent presents its ERC-8004 passport. The feed checks identity and reputation, then answers with a price: 402, one tenth of a cent.',
+          'The agent presents its ERC-8004 passport. The feed checks identity and reputation, then answers with an HTTP 402 quote of one tenth of a cent.',
           'The agent pays in USDC over x402 and the data comes back in the same exchange. No account was created and no key was stored.',
         ],
       },
@@ -168,7 +168,7 @@ export const USE_CASES: UseCase[] = [
       {
         heading: 'The human line',
         body: [
-          'Conversions follow the same permission model as every payment: inside the policy they run, outside it they wait for you. Yield is not worth losing the tower.',
+          'Conversions follow the same permission model as every payment: inside the policy they run, outside it they wait for you. Yield is never worth losing control.',
         ],
       },
     ],

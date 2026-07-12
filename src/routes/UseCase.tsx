@@ -36,7 +36,7 @@ export default function UseCase() {
 
   if (!uc) return <Navigate to="/#use-cases" replace />
 
-  const more = USE_CASES.filter((u) => u.slug !== uc.slug)
+  const more = USE_CASES.filter((u) => u.slug !== uc.slug).slice(0, 4)
 
   return (
     <div className="w-full bg-white" style={{ fontFamily: 'var(--font-body)' }}>

@@ -16,7 +16,8 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className="relative z-10 mx-auto flex w-full max-w-[1280px] items-center justify-between px-5 py-4 sm:px-8 sm:py-5">
+      <div className="fixed inset-x-0 top-0 z-50 border-b border-black/[0.06] bg-cream/80 backdrop-blur-md">
+      <nav className="mx-auto flex w-full max-w-[1280px] items-center justify-between px-5 py-4 sm:px-8 sm:py-5">
         {/* Left: logo + wordmark */}
         <Link to="/" aria-label={`${APP_NAME} home`} className="flex items-center gap-2">
           <Logo />
@@ -52,6 +53,7 @@ export default function Navbar() {
           <Menu size={26} color="#192837" />
         </button>
       </nav>
+      </div>
 
       <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
     </>

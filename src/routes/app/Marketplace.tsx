@@ -13,6 +13,10 @@ import { authHeaders, useAuth } from '../../store/auth'
 
 import { MCP_BASE } from '../../lib/mcpBase'
 
+/** Shorten any full 40-hex address inside activity text so it never overflows the card. */
+const humanizeActivity = (text: string) =>
+  text.replace(/0x[0-9a-fA-F]{40}/g, (a) => `${a.slice(0, 6)}...${a.slice(-4)}`)
+
 type MarketAgent = {
   id: string
   name: string
@@ -180,9 +184,9 @@ export default function Marketplace() {
                 <div className="grid h-11 w-11 place-items-center rounded-xl bg-accent/10 text-accent">
                   <Bot size={20} />
                 </div>
-                <div>
-                  <div className="font-bold text-ink">{a.name}</div>
-                  <div className="text-xs text-ink/50">{a.category}</div>
+                <div className="min-w-0">
+                  <div className="truncate font-bold text-ink">{a.name}</div>
+                  <div className="truncate text-xs text-ink/50">{a.category}</div>
                 </div>
               </div>
               <button
@@ -289,8 +293,8 @@ export default function Marketplace() {
                 {a.activity.map((ev, i) => (
                   <li key={i} className="flex items-start gap-2 text-xs text-ink/60">
                     <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent" />
-                    <span>
-                      {ev.text}
+                    <span className="min-w-0 break-words">
+                      {humanizeActivity(ev.text)}
                       <span className="ml-1.5 text-ink/35">
                         {new Date(ev.at).toLocaleString()}
                       </span>

@@ -358,9 +358,9 @@ export default function Permissions() {
           <div className="grid h-14 w-14 place-items-center rounded-2xl bg-accent text-lg font-bold text-white">
             {user?.name?.[0]?.toUpperCase() ?? 'U'}
           </div>
-          <div>
-            <div className="font-semibold">{user?.name}</div>
-            <div className="text-sm text-ink/55">{user?.email}</div>
+          <div className="min-w-0">
+            <div className="truncate font-semibold">{user?.name}</div>
+            <div className="truncate text-sm text-ink/55">{user?.email}</div>
           </div>
         </div>
         <button
@@ -570,7 +570,7 @@ function VaultPanel({ agentId }: { agentId: string }) {
   const has = !!vault?.vaultAddress
 
   return (
-    <section className="mt-4 overflow-hidden rounded-3xl border border-[#7342E2]/25 bg-gradient-to-b from-[#7342E2]/[0.06] to-white p-6 shadow-[0_1px_3px_rgba(16,24,40,0.04)] sm:p-7">
+    <section className="mt-4 overflow-hidden rounded-2xl border border-[#7342E2]/25 bg-gradient-to-b from-[#7342E2]/[0.06] to-white p-6 shadow-[0_1px_3px_rgba(16,24,40,0.04)] sm:p-7">
       <div className="flex items-center gap-3">
         <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#7342E2] text-white">
           <Link2 size={16} />
@@ -724,7 +724,7 @@ function CircleWalletPanel({ agentId }: { agentId: string }) {
   const usdc = wallet?.balances?.find((b) => (b.symbol ?? '').toUpperCase().includes('USDC'))
 
   return (
-    <section className="mt-4 overflow-hidden rounded-3xl border border-[#2775CA]/25 bg-gradient-to-b from-[#2775CA]/[0.06] to-white p-6 shadow-[0_1px_3px_rgba(16,24,40,0.04)] sm:p-7">
+    <section className="mt-4 overflow-hidden rounded-2xl border border-[#2775CA]/25 bg-gradient-to-b from-[#2775CA]/[0.06] to-white p-6 shadow-[0_1px_3px_rgba(16,24,40,0.04)] sm:p-7">
       <div className="flex items-center gap-3">
         <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#2775CA] text-white">
           <Wallet size={16} />
@@ -897,7 +897,7 @@ function TreasuryPanel({ agentId }: { agentId: string }) {
   const money = (n?: number) => `$${(n ?? 0).toFixed(2)}`
 
   return (
-    <section className="mt-4 overflow-hidden rounded-3xl border border-emerald-200/70 bg-gradient-to-b from-emerald-50/50 to-white p-6 shadow-[0_1px_3px_rgba(16,24,40,0.04)] sm:p-7">
+    <section className="mt-4 overflow-hidden rounded-2xl border border-emerald-200/70 bg-gradient-to-b from-emerald-50/50 to-white p-6 shadow-[0_1px_3px_rgba(16,24,40,0.04)] sm:p-7">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-600 text-white">

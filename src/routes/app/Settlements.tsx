@@ -210,7 +210,7 @@ export default function Settlements() {
                     <ArrowUpRight size={16} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
                       <span className="truncate font-mono text-xs text-ink">{short(ix.payee)}</span>
                       <StatusPill status={ix.status} />
                       {ix.enforcedBy === 'onchain-vault' && (

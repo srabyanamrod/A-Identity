@@ -21,7 +21,7 @@ export default function Landing() {
   return (
     <div className="w-full" style={{ fontFamily: 'var(--font-body)', color: 'var(--color-text)' }}>
       {/* Hero block */}
-      <header className="relative min-h-screen w-full overflow-hidden">
+      <header className="relative min-h-screen w-full overflow-hidden pt-[72px]">
         <video
           className="absolute inset-0 h-full w-full object-cover"
           src={BACKGROUND_VIDEO}
