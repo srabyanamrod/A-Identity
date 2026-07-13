@@ -50,21 +50,24 @@ export default function Marketplace() {
   const [openActivity, setOpenActivity] = useState<string | null>(null)
   const [anchoringId, setAnchoringId] = useState<string | null>(null)
   const [anchorNote, setAnchorNote] = useState<Record<string, string>>({})
+  // Default view is the KYA-verified showcase; the toggle reveals pending agents too.
+  const [showAll, setShowAll] = useState(false)
+  const [counts, setCounts] = useState({ total: 0, totalAll: 0 })
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`${MCP_BASE}/api/marketplace?viewer=${encodeURIComponent(viewer)}`, {
-        signal: AbortSignal.timeout(6000),
-      })
-      const data = (await res.json()) as { agents: MarketAgent[] }
+      const url = `${MCP_BASE}/api/marketplace?viewer=${encodeURIComponent(viewer)}${showAll ? '&all=1' : ''}`
+      const res = await fetch(url, { signal: AbortSignal.timeout(6000) })
+      const data = (await res.json()) as { agents: MarketAgent[]; total?: number; totalAll?: number }
       setAgents(data.agents)
+      setCounts({ total: data.total ?? data.agents.length, totalAll: data.totalAll ?? data.agents.length })
       setError(null)
     } catch {
       setError('Marketplace needs the MCP server. Run: npm run dev:all')
     } finally {
       setLoading(false)
     }
-  }, [viewer])
+  }, [viewer, showAll])
 
   useEffect(() => {
     load()
@@ -142,6 +145,25 @@ export default function Marketplace() {
           <Plus size={15} /> Register an agent
         </Link>
       </div>
+
+      {/* KYA showcase vs full roster. Default shows only verified agents (matching the
+          "every agent here passed KYA" promise); the toggle reveals pending ones too. */}
+      {!loading && !error && (counts.totalAll > counts.total || showAll) && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => setShowAll((v) => !v)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-ink/15 px-3 py-1.5 font-semibold text-ink/70 transition-colors hover:bg-ink/5"
+          >
+            {showAll ? 'Show verified only' : 'Show all (including pending)'}
+          </button>
+          <span className="text-ink/45">
+            {showAll
+              ? `Showing all ${counts.totalAll} agents`
+              : `${counts.total} KYA-verified shown, ${counts.totalAll - counts.total} pending hidden`}
+          </span>
+        </div>
+      )}
 
       {error && (
         <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/60 p-5 text-sm text-ink/70">

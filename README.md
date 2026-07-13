@@ -1,5 +1,12 @@
 # A-Identity
 
+[![CI](https://github.com/srabyanamrod/A-Identity/actions/workflows/ci.yml/badge.svg)](https://github.com/srabyanamrod/A-Identity/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+
+**[Live demo](https://a-identity.xyz)** | **[Docs](https://a-identity.mintlify.site)** | **[Architecture](ARCHITECTURE.md)**
+
+Built for the **Ignyte Stablecoin Commerce Stack Challenge**, Track 4: Best Agentic Economy Experience on Arc.
+
 **The passport and wallet for the agentic economy.** Give every AI agent a
 verified on-chain identity and a wallet it can pay from. Verify first, then pay,
 with a human in the tower for anything that moves real value.
@@ -10,6 +17,8 @@ per-request payments.
 
 > Status: hackathon MVP. Arc is the live phase-1 network. Stellar is next, then
 > Avalanche, then Solana.
+
+![A-Identity architecture: agent identity (ERC-8004 + KYA), the three-layer spend-policy enforcement (server pre-check, on-chain vault, Circle Agent Wallet), the USDC payment rails (x402, Nanopayments, escrow), and cross-chain USDC via Circle Gateway and CCTP, all on Arc.](docs/images/architecture.png)
 
 ---
 
@@ -357,6 +366,11 @@ USDC is burned on Arc and minted **natively** on Base Sepolia — never wrapped 
 (`@circle-fin/bridge-kit`). Distinct from Gateway's unified-balance forwarding; together they
 show both canonical USDC-liquidity primitives. *Improve:* the "leaving Arc, amount must exceed
 the CCTPv2 max fee" floor is easy to trip on tiny testnet transfers — a clearer SDK error would help.
+
+## Team
+
+- **Aybars Dorman** ([@srabyanamrod](https://github.com/srabyanamrod)): product, go-to-market, frontend, and submission.
+- **Meric** ([@mericcintosun](https://github.com/mericcintosun)): backend, smart contracts, and multi-chain integration.
 
 ## License
 

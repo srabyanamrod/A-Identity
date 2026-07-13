@@ -1076,17 +1076,13 @@ export function followAgent(agentId: string, follower: string): { followers: num
   return { followers: agent.followers.length }
 }
 
-/** An agent worth showing in the default Agent House feed: it has done or declared
- *  something real. This hides empty scaffold/test rows (no description, no wallet,
- *  unverified, never anchored) so the showcase matches the "everyone passed KYA"
- *  story — without deleting any data (pass `includeAll` to see the full list). */
-function isPresentable(a: PlatformAgent): boolean {
-  return (
-    Boolean(a.description?.trim()) ||
-    Boolean(a.walletAddress) ||
-    a.kya === 'verified' ||
-    a.onchain === 'registered'
-  )
+/** An agent shown in the DEFAULT Agent House feed: it has passed KYA and says what it
+ *  does. This is exactly the landing promise ("every agent here passed KYA before it
+ *  could act"), so the showcase can't contradict it. Unverified / scaffold rows are not
+ *  deleted — they stay reachable via `includeAll` (the "Show all (including pending)"
+ *  toggle / ?all=1). */
+function isShowcase(a: PlatformAgent): boolean {
+  return a.kya === 'verified' && Boolean(a.description?.trim())
 }
 
 /** How prominent an agent is: on-chain identity and a verified KYA float to the top. */
@@ -1099,7 +1095,7 @@ function marketRank(a: PlatformAgent): number {
  *  (from `?all=1`) bypasses the hygiene filter and shows every agent. */
 export function marketplace(viewer?: string, includeAll = false) {
   const shown = state.agents
-    .filter((a) => includeAll || isPresentable(a))
+    .filter((a) => includeAll || isShowcase(a))
     .map((a) => ({ a, rep: repOf(a) }))
     .sort((x, y) => {
       const byRank = marketRank(y.a) - marketRank(x.a)
@@ -1128,6 +1124,10 @@ export function marketplace(viewer?: string, includeAll = false) {
       createdAt: a.createdAt,
     })),
     total: shown.length,
+    // Total across every agent, so the UI can offer "Show all (including pending)"
+    // and say how many are hidden from the default (KYA-verified) showcase.
+    totalAll: state.agents.length,
+    showingAll: includeAll,
   }
 }
 

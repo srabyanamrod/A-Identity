@@ -1,6 +1,12 @@
 /**
- * Smoke test: spin up the built server over stdio, list its tools, and call
- * each one. Exits non-zero on any failure so it can gate CI later.
+ * Smoke test: spin up the built read-only MCP server over stdio, list its tools, and
+ * exercise the real ones. Exits non-zero on any failure.
+ *
+ * This server is the READ-ONLY agent-facing surface: it resolves identity with a live
+ * on-chain read (Arc ERC-8004) and describes capabilities/chains. Reputation and the
+ * agent roster live on the PLATFORM (the HTTP server + its store), so `get_reputation`
+ * and `list_agents` here return honest pointers to the platform, not fabricated data —
+ * the assertions below reflect that (no mock scores, no mock agents).
  *
  * Run with: npm run build && npm run smoke
  */
@@ -38,78 +44,56 @@ async function main() {
     if (!names.includes(name)) throw new Error(`missing tool: ${name}`)
   }
 
+  // 1) Resolve the live Arc showcase agent (ERC-8004 #849980) with a real on-chain read.
+  const SHOWCASE = 'eip155:5042002:8004/849980'
   const resolved = (await client.callTool({
     name: 'resolve_agent',
-    arguments: { query: 'payments.a-identity.xyz' },
+    arguments: { query: SHOWCASE },
   })) as TextResult
-  console.log('\nresolve_agent(payments.a-identity.xyz):')
+  console.log(`\nresolve_agent(${SHOWCASE}):`)
   console.log(textOf(resolved))
-
-  const rep = (await client.callTool({
-    name: 'get_reputation',
-    arguments: { agentId: 'eip155:1:8004/1' },
-  })) as TextResult
-  console.log('\nget_reputation(eip155:1:8004/1):')
-  console.log(textOf(rep))
-
-  const caps = (await client.callTool({
-    name: 'list_capabilities',
-    arguments: {},
-  })) as TextResult
-  console.log('\nlist_capabilities():')
-  console.log(textOf(caps))
-
-  // basic assertions
-  if (!textOf(resolved).includes('"found": true')) throw new Error('resolve_agent did not resolve')
-  const score = JSON.parse(textOf(rep)).reputation?.score
-  if (typeof score !== 'number' || score <= 0) throw new Error('get_reputation returned no score')
-  if (!textOf(caps).includes('ERC-8004')) throw new Error('list_capabilities missing identity standard')
-
-  // determinism: a second identical call must return the same score
-  const rep2 = (await client.callTool({
-    name: 'get_reputation',
-    arguments: { agentId: 'eip155:1:8004/1' },
-  })) as TextResult
-  if (JSON.parse(textOf(rep2)).reputation?.score !== score) {
-    throw new Error('reputation not deterministic')
+  if (!textOf(resolved).includes('"found": true')) {
+    throw new Error('resolve_agent did not resolve the live Arc showcase agent')
   }
 
-  // multi-chain: all five chains must be reported
-  const chainStatus = (await client.callTool({
-    name: 'get_chain_status',
-    arguments: {},
-  })) as TextResult
+  // 2) Capabilities advertise the ERC-8004 identity standard.
+  const caps = (await client.callTool({ name: 'list_capabilities', arguments: {} })) as TextResult
+  console.log('\nlist_capabilities():')
+  console.log(textOf(caps))
+  if (!textOf(caps).includes('ERC-8004')) throw new Error('list_capabilities missing identity standard')
+
+  // 3) get_reputation is a read-only pointer here: reputation is computed on the platform
+  //    (REST /api/agents/reputation), so the tool returns a well-formed response — a real
+  //    score when it has one, otherwise an honest note — never a fabricated number.
+  const rep = (await client.callTool({ name: 'get_reputation', arguments: { agentId: SHOWCASE } })) as TextResult
+  console.log('\nget_reputation(showcase):')
+  console.log(textOf(rep))
+  const repJson = JSON.parse(textOf(rep))
+  if (typeof repJson.found !== 'boolean') throw new Error('get_reputation returned a malformed response')
+  const repScore = repJson?.reputation?.score
+  if (repScore !== undefined && (typeof repScore !== 'number' || repScore < 0 || repScore > 1000)) {
+    throw new Error('get_reputation score out of range')
+  }
+
+  // 4) All five chains are reported by get_chain_status.
+  const chainStatus = (await client.callTool({ name: 'get_chain_status', arguments: {} })) as TextResult
   const chainIds = JSON.parse(textOf(chainStatus)).chains.map((c: { id: string }) => c.id)
   for (const id of ['arc', 'base', 'arbitrum', 'stellar', 'algorand']) {
     if (!chainIds.includes(id)) throw new Error(`get_chain_status missing chain: ${id}`)
   }
 
-  // non-EVM resolution: Stellar and Algorand agents must resolve
-  for (const q of ['stellar:pubnet:aid/8', 'algorand:mainnet:aid/9']) {
-    const r = (await client.callTool({ name: 'resolve_agent', arguments: { query: q } })) as TextResult
-    if (!textOf(r).includes('"found": true')) throw new Error(`resolve_agent failed for ${q}`)
-  }
-
-  // chain filter: a Base agent must NOT resolve when filtered to a different chain
+  // 5) Chain filter: the Arc agent must NOT resolve when filtered to a different chain.
   const mismatched = (await client.callTool({
     name: 'resolve_agent',
-    arguments: { query: 'eip155:8453:8004/4', chain: 'arbitrum' },
+    arguments: { query: SHOWCASE, chain: 'base' },
   })) as TextResult
   if (textOf(mismatched).includes('"found": true')) {
     throw new Error('resolve_agent chain filter did not reject a cross-chain match')
   }
 
-  // list_agents per chain
-  const baseAgents = (await client.callTool({
-    name: 'list_agents',
-    arguments: { chain: 'base' },
-  })) as TextResult
-  const baseTotal = JSON.parse(textOf(baseAgents)).total
-  if (baseTotal < 1) throw new Error('list_agents(base) returned no agents')
-
   await client.close()
   console.log(
-    `\n✅ smoke test passed (score=${score}, 5 chains, non-EVM resolves, chain filter works, base agents=${baseTotal})`,
+    `\n✅ smoke test passed (live Arc resolve, capabilities, honest reputation pointer, 5 chains, chain filter)`,
   )
 }
 

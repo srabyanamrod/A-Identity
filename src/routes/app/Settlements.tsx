@@ -68,7 +68,18 @@ export default function Settlements() {
     try {
       const res = await fetch(`${MCP_BASE}/api/instructions?agentId=${id}`, { signal: AbortSignal.timeout(6000) })
       const data = (await res.json()) as { instructions: Instruction[] }
-      setItems([...data.instructions].reverse())
+      // Pin real on-chain settlements to the top, then the active queue, then rejected,
+      // then simulated rows, so the on-chain proof leads instead of being buried under
+      // repeated "simulated" lines. Newest first within each group.
+      const rank = (s: Status) =>
+        s === 'executed_onchain' ? 0
+          : s === 'pending_approval' || s === 'approved' || s === 'auto_approved' ? 1
+          : s === 'rejected' ? 2
+          : 3
+      const sorted = [...data.instructions].sort(
+        (a, b) => rank(a.status) - rank(b.status) || b.createdAt.localeCompare(a.createdAt),
+      )
+      setItems(sorted)
       setError(null)
     } catch {
       setError('Could not load settlements.')
@@ -224,7 +235,17 @@ export default function Settlements() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-0.5 text-xs text-ink/50">{ix.policyNote}</div>
+                    {ix.status !== 'executed_simulated' && ix.policyNote && (
+                      <div
+                        className={`mt-0.5 text-xs ${
+                          ix.status === 'pending_approval' && ix.enforcedBy === 'onchain-vault'
+                            ? 'font-semibold text-amber-700'
+                            : 'text-ink/50'
+                        }`}
+                      >
+                        {ix.policyNote}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-bold text-ink">
@@ -267,7 +288,12 @@ export default function Settlements() {
                     </a>
                   )}
                   {ix.status === 'executed_simulated' && (
-                    <span className="text-xs text-ink/40">Simulated (payee not an Arc address)</span>
+                    <span
+                      className="text-xs text-ink/40"
+                      title={ix.policyNote || 'Simulated: the payee has no Arc address to settle to.'}
+                    >
+                      Simulated
+                    </span>
                   )}
                 </div>
               </li>

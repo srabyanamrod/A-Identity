@@ -187,8 +187,12 @@ async function main() {
   check('agent created with an owner', createRes.status === 201 && !!agentId && !!createRes.json?.agent?.owner)
   const platform = await api('GET', '/api/platform-agents')
   check('agent appears in the platform list', platform.json?.agents?.some((a) => a.id === agentId))
-  const market = await api('GET', '/api/marketplace')
-  check('agent appears in Agent House with a reputation', market.json?.agents?.some((a) => a.id === agentId && typeof a.reputation?.score === 'number'))
+  // The default Agent House feed is the KYA-verified showcase; a freshly created agent
+  // is not verified yet, so it is reachable via ?all=1 ("Show all, including pending").
+  const market = await api('GET', '/api/marketplace?all=1')
+  check('agent appears in Agent House (all) with a reputation', market.json?.agents?.some((a) => a.id === agentId && typeof a.reputation?.score === 'number'))
+  const showcase = await api('GET', '/api/marketplace')
+  check('default Agent House hides an unverified agent (shows only the KYA showcase)', !showcase.json?.agents?.some((a) => a.id === agentId))
 
   // ── G. Ownership ──────────────────────────────────────────────────────────────
   phase('G. Ownership')

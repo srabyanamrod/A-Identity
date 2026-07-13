@@ -457,6 +457,7 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
   const [wallet, setWallet] = useState<{ address: string; privateKey: string } | null>(null)
   const [showKey, setShowKey] = useState(false)
   const [copiedKey, setCopiedKey] = useState(false)
+  const [keySaved, setKeySaved] = useState(false)
   const [walletBusy, setWalletBusy] = useState(false)
   const [submitBusy, setSubmitBusy] = useState(false)
   const [done, setDone] = useState<string | null>(null)
@@ -499,6 +500,8 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
 
   const submit = async () => {
     if (!name.trim()) { setError('Give the agent a name.'); return }
+    if (desc.trim().length < 20) { setError('Describe what this agent does (at least 20 characters), so it can appear in the Agent House showcase.'); return }
+    if (wallet && !keySaved) { setError('Confirm you saved the private key before continuing.'); return }
     setSubmitBusy(true)
     setError(null)
     try {
@@ -709,7 +712,12 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
         <div className={label}>1. Identity</div>
         <div className="mt-2 flex flex-col gap-3">
           <input className={input} placeholder="Agent name (e.g. My Trading Agent)" value={name} onChange={(e) => setName(e.target.value)} required />
-          <input className={input} placeholder="What does this agent do?" value={desc} onChange={(e) => setDesc(e.target.value)} />
+          <div>
+            <input className={input} placeholder="What does this agent do? (shown in Agent House)" value={desc} onChange={(e) => setDesc(e.target.value)} required minLength={20} />
+            <p className="mt-1 text-[11px] text-ink/45">
+              At least 20 characters. Verified agents with a description appear in the Agent House showcase.
+            </p>
+          </div>
           <select className={input} value={category} onChange={(e) => setCategory(e.target.value)}>
             {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
           </select>
@@ -813,6 +821,15 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
             <p className="mt-1 text-[11px] text-ink/45">
               Save it now. It is shown once and never stored. Reveal only somewhere no one can see your screen.
             </p>
+            <label className="mt-2 flex items-start gap-2 text-[11px] font-medium text-ink/70">
+              <input
+                type="checkbox"
+                checked={keySaved}
+                onChange={(e) => setKeySaved(e.target.checked)}
+                className="mt-0.5 accent-[#7342E2]"
+              />
+              I saved this private key somewhere safe. A-Identity never stores it and cannot recover it.
+            </label>
             <a
               href="https://faucet.circle.com"
               target="_blank"
@@ -830,7 +847,7 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
       <button
         type="button"
         onClick={submit}
-        disabled={submitBusy}
+        disabled={submitBusy || (!!wallet && !keySaved)}
         className="rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:opacity-50"
       >
         {submitBusy ? 'Registering...' : 'Pass KYA and register on Arc testnet'}

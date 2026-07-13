@@ -92,6 +92,11 @@ export default function AutopilotPanel() {
   const executed = result?.executed === true ? result : null
   const revealing = executed ? revealed < executed.payments.length : false
   const allRevealed = executed ? revealed >= executed.payments.length : false
+  // Cumulative spend through the payments revealed so far, and its share of the budget,
+  // so the bar fills live as each payment appears and pins near the line at the stop.
+  const revealedPayments = executed ? executed.payments.slice(0, revealed) : []
+  const spent = revealedPayments.length ? revealedPayments[revealedPayments.length - 1].cumulativeUsd : 0
+  const budgetPct = executed && executed.budgetUsd > 0 ? Math.min(100, (spent / executed.budgetUsd) * 100) : 0
 
   return (
     <div className="mt-8 rounded-2xl border-2 border-accent/30 bg-accent/[0.03] p-6">
@@ -152,6 +157,22 @@ export default function AutopilotPanel() {
                 {executed.volumeUsd} USDC
               </span>
             )}
+          </div>
+
+          {/* Live budget bar: fills as payments reveal, turns amber at the self-stop line. */}
+          <div>
+            <div className="flex items-center justify-between text-[11px] text-ink/50">
+              <span>Budget ${executed.budgetUsd.toFixed(3)}</span>
+              <span>spent ${spent.toFixed(3)}</span>
+            </div>
+            <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-ink/8">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  allRevealed && executed.pausedForHuman ? 'bg-amber-500' : 'bg-accent'
+                }`}
+                style={{ width: `${budgetPct}%` }}
+              />
+            </div>
           </div>
 
           {executed.payments.slice(0, revealed).map((p) => (
