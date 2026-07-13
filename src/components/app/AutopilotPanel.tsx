@@ -29,7 +29,7 @@ type Result =
  * POST /api/arc/agent-run.
  *
  * The payments settle server-side in one batch; we then reveal them one-by-one on
- * screen so the run reads as a live sequence — real transactions, played back in
+ * screen so the run reads as a live sequence of real transactions, played back in
  * order, ending on the self-stop moment. Respects prefers-reduced-motion.
  */
 export default function AutopilotPanel() {
@@ -126,7 +126,7 @@ export default function AutopilotPanel() {
       {busy && (
         <div className="mt-4 flex items-center gap-2 rounded-xl border border-accent/20 bg-accent/[0.04] p-3 text-sm text-ink/60">
           <Loader2 size={14} className="shrink-0 animate-spin text-accent" />
-          <span>The agent is paying autonomously on Arc — real gasless nanopayments settle in a batch.</span>
+          <span>The agent is paying autonomously on Arc. Real gasless nanopayments settle in a batch.</span>
         </div>
       )}
 
@@ -144,7 +144,7 @@ export default function AutopilotPanel() {
             {revealing ? (
               <>
                 <Loader2 size={12} className="shrink-0 animate-spin text-accent" />
-                <span>Agent paying {short(executed.service)} autonomously — {revealed}/{executed.payments.length}</span>
+                <span>Agent paying {short(executed.service)} autonomously ({revealed}/{executed.payments.length})</span>
               </>
             ) : (
               <span>
@@ -178,7 +178,7 @@ export default function AutopilotPanel() {
           {revealing && (
             <div className="flex items-center gap-2 rounded-lg border border-dashed border-ink/15 px-3 py-2 text-ink/40">
               <span className="h-1.5 w-1.5 animate-ping rounded-full bg-accent" />
-              <span className="text-xs">agent deciding whether the next payment fits the budget…</span>
+              <span className="text-xs">agent deciding whether the next payment fits the budget</span>
             </div>
           )}
 

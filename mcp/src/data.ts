@@ -67,24 +67,24 @@ export const CHAIN_CONFIG = [
     evmCompatible: true, color: '#2775CA',
     identity: 'ERC-8004', erc8004Native: true, x402: true,
     role: 'Primary payment rail: gas in USDC, sub-second finality, App Kit unified balance.',
-    // Live: the core flow (identity, KYA, vault, USDC settlement) runs on Arc testnet
-    // today with real transactions — matching the "Live on Arc testnet" story on the site.
-    // base/arbitrum stay 'preview' (EVM fallbacks, not yet wired end to end).
-    status: 'live',
+    // Active: the core flow (identity, KYA, vault, USDC settlement) runs on Arc testnet
+    // today with real transactions. Value matches src/lib/chains.ts (arc: 'active');
+    // base/arbitrum are 'planned' EVM fallbacks, not yet wired end to end.
+    status: 'active',
   },
   {
     id: 'base', name: 'Base', shortName: 'Base', chainId: 8453,
     evmCompatible: true, color: '#0052FF',
     identity: 'ERC-8004', erc8004Native: true, x402: true,
     role: 'EVM fallback: ERC-8004 compatible, Coinbase ecosystem, low fees.',
-    status: 'preview',
+    status: 'planned',
   },
   {
     id: 'arbitrum', name: 'Arbitrum One', shortName: 'Arbitrum', chainId: 42161,
     evmCompatible: true, color: '#28A0F0',
     identity: 'ERC-8004', erc8004Native: true, x402: true,
     role: 'DeFi gateway: large protocol ecosystem, USDC via Circle, ERC-8004 compatible.',
-    status: 'preview',
+    status: 'planned',
   },
   {
     id: 'stellar', name: 'Stellar', shortName: 'Stellar', chainId: null,
