@@ -81,6 +81,14 @@ vault** = three independent guarantees.
 
 ![A-Identity architecture — agent identity (ERC-8004 + KYA), the three-layer spend-policy enforcement (server pre-check → on-chain vault → Circle Agent Wallet), the USDC payment rails (x402, Nanopayments, escrow), and cross-chain USDC via Circle Gateway + CCTP, all on Arc.](docs/images/architecture.png)
 
+The same system in three views (also drop-in slides for a deck):
+
+![End to end flow: verify the agent, bound its spend, let it pay](docs/images/architecture-flow.png)
+
+![Three-layer spend enforcement: server pre-check, on-chain policy vault, Circle Agent Wallet](docs/images/architecture-enforcement.png)
+
+![Circle products on Arc, each wired to real code](docs/images/architecture-circle.png)
+
 ```
 a-identity/
 ├─ src/               React 19 + Vite + Tailwind v4 frontend (landing, app, blog, use cases)
