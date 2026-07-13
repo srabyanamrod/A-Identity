@@ -1076,13 +1076,18 @@ export function followAgent(agentId: string, follower: string): { followers: num
   return { followers: agent.followers.length }
 }
 
-/** An agent shown in the DEFAULT Agent House feed: it has passed KYA and says what it
- *  does. This is exactly the landing promise ("every agent here passed KYA before it
- *  could act"), so the showcase can't contradict it. Unverified / scaffold rows are not
- *  deleted — they stay reachable via `includeAll` (the "Show all (including pending)"
- *  toggle / ?all=1). */
+/** Minimum description length for an agent to make the default showcase. Matches the
+ *  registration rule (RegisterForm requires >= 20 chars), so one-word scaffold rows like
+ *  "new" / "new agent" (description "payments") that predate that rule stay out. */
+const SHOWCASE_MIN_DESC = 20
+
+/** An agent shown in the DEFAULT Agent House feed: it has passed KYA and actually
+ *  describes what it does. This is exactly the landing promise ("every agent here passed
+ *  KYA before it could act"), so the showcase can't contradict it. Nothing is deleted —
+ *  unverified / thin-description rows stay reachable via `includeAll` (the "Show all
+ *  (including pending)" toggle / ?all=1). */
 function isShowcase(a: PlatformAgent): boolean {
-  return a.kya === 'verified' && Boolean(a.description?.trim())
+  return a.kya === 'verified' && (a.description?.trim().length ?? 0) >= SHOWCASE_MIN_DESC
 }
 
 /** How prominent an agent is: on-chain identity and a verified KYA float to the top. */
