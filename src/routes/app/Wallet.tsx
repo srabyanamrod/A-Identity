@@ -11,6 +11,7 @@ import {
 import { MCP_BASE } from '../../lib/mcpBase'
 import { fetchPlatformAgents } from '../../lib/platformAgents'
 import { pickPrimaryAgent } from '../../lib/pickAgent'
+import { CircleWalletPanel, TreasuryPanel } from '../../components/app/WalletPanels'
 const FAUCET = 'https://faucet.circle.com'
 
 type Agent = { id: string; name: string; walletAddress: string | null }
@@ -250,6 +251,12 @@ export default function Wallet() {
               No payments yet. Make one in Settlements.
             </div>
           )}
+
+          {/* Circle Agent Wallet: hosted wallet-layer screening */}
+          <CircleWalletPanel agentId={agentId} />
+
+          {/* Treasury: idle-balance auto-yield into USYC */}
+          <TreasuryPanel agentId={agentId} />
         </>
       )}
     </div>
