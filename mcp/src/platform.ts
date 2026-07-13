@@ -1076,10 +1076,39 @@ export function followAgent(agentId: string, follower: string): { followers: num
   return { followers: agent.followers.length }
 }
 
-/** The marketplace feed: every platform agent as a showcase card. */
-export function marketplace(viewer?: string) {
+/** An agent worth showing in the default Agent House feed: it has done or declared
+ *  something real. This hides empty scaffold/test rows (no description, no wallet,
+ *  unverified, never anchored) so the showcase matches the "everyone passed KYA"
+ *  story — without deleting any data (pass `includeAll` to see the full list). */
+function isPresentable(a: PlatformAgent): boolean {
+  return (
+    Boolean(a.description?.trim()) ||
+    Boolean(a.walletAddress) ||
+    a.kya === 'verified' ||
+    a.onchain === 'registered'
+  )
+}
+
+/** How prominent an agent is: on-chain identity and a verified KYA float to the top. */
+function marketRank(a: PlatformAgent): number {
+  return (a.onchain === 'registered' ? 2 : 0) + (a.kya === 'verified' ? 1 : 0)
+}
+
+/** The marketplace feed: presentable platform agents as showcase cards, best first.
+ *  Sorted by on-chain/KYA prominence, then reputation, then newest. `includeAll`
+ *  (from `?all=1`) bypasses the hygiene filter and shows every agent. */
+export function marketplace(viewer?: string, includeAll = false) {
+  const shown = state.agents
+    .filter((a) => includeAll || isPresentable(a))
+    .map((a) => ({ a, rep: repOf(a) }))
+    .sort((x, y) => {
+      const byRank = marketRank(y.a) - marketRank(x.a)
+      if (byRank !== 0) return byRank
+      if (y.rep.score !== x.rep.score) return y.rep.score - x.rep.score
+      return y.a.createdAt.localeCompare(x.a.createdAt) // newest first
+    })
   return {
-    agents: state.agents.map((a) => ({
+    agents: shown.map(({ a, rep }) => ({
       id: a.id,
       name: a.name,
       description: a.description,
@@ -1091,14 +1120,14 @@ export function marketplace(viewer?: string) {
       onchainTx: a.onchainTx,
       onchainExplorer: a.onchainExplorer,
       onchainAgentId: a.onchainAgentId,
-      reputation: repOf(a),
+      reputation: rep,
       walletAddress: a.walletAddress,
       followers: a.followers.length,
       followedByViewer: viewer ? a.followers.includes(viewer) : false,
       activity: a.activity.slice(-5).reverse(),
       createdAt: a.createdAt,
     })),
-    total: state.agents.length,
+    total: shown.length,
   }
 }
 

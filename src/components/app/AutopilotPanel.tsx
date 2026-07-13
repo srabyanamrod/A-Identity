@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Bot, CheckCircle2, Loader2, Hand, Coins } from 'lucide-react'
 import { MCP_BASE } from '../../lib/mcpBase'
 import { authHeaders } from '../../store/auth'
@@ -27,6 +27,10 @@ type Result =
  * and stops itself when the next payment would breach the budget (bounded authority,
  * live). Each settlement accrues a protocol fee routed to the treasury. Hits
  * POST /api/arc/agent-run.
+ *
+ * The payments settle server-side in one batch; we then reveal them one-by-one on
+ * screen so the run reads as a live sequence — real transactions, played back in
+ * order, ending on the self-stop moment. Respects prefers-reduced-motion.
  */
 export default function AutopilotPanel() {
   const [budget, setBudget] = useState('0.02')
@@ -34,6 +38,31 @@ export default function AutopilotPanel() {
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<Result | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [revealed, setRevealed] = useState(0)
+
+  // Reveal the (real, already-settled) payments one at a time so the run is filmable
+  // as a live sequence. The self-stop banner + fee unlock only after the last payment.
+  useEffect(() => {
+    if (!result || result.executed !== true) {
+      setRevealed(0)
+      return
+    }
+    const n = result.payments.length
+    const reduce =
+      typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+    if (reduce || n === 0) {
+      setRevealed(n)
+      return
+    }
+    let i = 0
+    setRevealed(0)
+    const id = window.setInterval(() => {
+      i += 1
+      setRevealed(i)
+      if (i >= n) window.clearInterval(id)
+    }, 800)
+    return () => window.clearInterval(id)
+  }, [result])
 
   const run = async () => {
     setBusy(true)
@@ -59,6 +88,10 @@ export default function AutopilotPanel() {
   }
 
   const short = (a?: string) => (a ? `${a.slice(0, 6)}...${a.slice(-4)}` : '-')
+
+  const executed = result?.executed === true ? result : null
+  const revealing = executed ? revealed < executed.payments.length : false
+  const allRevealed = executed ? revealed >= executed.payments.length : false
 
   return (
     <div className="mt-8 rounded-2xl border-2 border-accent/30 bg-accent/[0.03] p-6">
@@ -90,6 +123,13 @@ export default function AutopilotPanel() {
         </button>
       </div>
 
+      {busy && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-accent/20 bg-accent/[0.04] p-3 text-sm text-ink/60">
+          <Loader2 size={14} className="shrink-0 animate-spin text-accent" />
+          <span>The agent is paying autonomously on Arc — real gasless nanopayments settle in a batch.</span>
+        </div>
+      )}
+
       {error && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-sm text-ink/70">{error}</div>}
 
       {result && result.executed === false && (
@@ -98,18 +138,28 @@ export default function AutopilotPanel() {
         </div>
       )}
 
-      {result && result.executed && (
+      {executed && (
         <div className="mt-4 space-y-2 text-sm">
-          <div className="text-xs font-semibold text-ink/45">
-            Agent paid {short(result.service)} autonomously · {result.settledCount} payments · volume{' '}
-            {result.volumeUsd} USDC
+          <div className="flex items-center gap-2 text-xs font-semibold text-ink/45">
+            {revealing ? (
+              <>
+                <Loader2 size={12} className="shrink-0 animate-spin text-accent" />
+                <span>Agent paying {short(executed.service)} autonomously — {revealed}/{executed.payments.length}</span>
+              </>
+            ) : (
+              <span>
+                Agent paid {short(executed.service)} autonomously · {executed.settledCount} payments · volume{' '}
+                {executed.volumeUsd} USDC
+              </span>
+            )}
           </div>
-          {result.payments.map((p) => (
+
+          {executed.payments.slice(0, revealed).map((p) => (
             <div
               key={p.n}
               className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
                 p.ok ? 'border-emerald-200 bg-emerald-50/60' : 'border-red-200 bg-red-50/60'
-              }`}
+              } motion-safe:animate-[fadeIn_0.35s_ease-out]`}
             >
               {p.ok ? (
                 <CheckCircle2 size={13} className="shrink-0 text-emerald-500" />
@@ -125,27 +175,40 @@ export default function AutopilotPanel() {
             </div>
           ))}
 
-          {result.pausedForHuman && (
-            <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50/70 px-3 py-2 text-amber-800">
+          {revealing && (
+            <div className="flex items-center gap-2 rounded-lg border border-dashed border-ink/15 px-3 py-2 text-ink/40">
+              <span className="h-1.5 w-1.5 animate-ping rounded-full bg-accent" />
+              <span className="text-xs">agent deciding whether the next payment fits the budget…</span>
+            </div>
+          )}
+
+          {allRevealed && executed.pausedForHuman && (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50/70 px-3 py-2 text-amber-800 motion-safe:animate-[fadeIn_0.4s_ease-out]">
               <Hand size={14} className="shrink-0" />
               <span>
-                <b>Bounded authority:</b> the agent hit your ${result.budgetUsd} budget and stopped itself.
+                <b>Bounded authority:</b> the agent hit your ${executed.budgetUsd} budget and stopped itself.
                 Further spend now needs a human.
               </span>
             </div>
           )}
 
-          <div className="flex items-center gap-2 rounded-lg border border-[#2775CA]/25 bg-[#2775CA]/[0.05] px-3 py-2 text-ink/75">
-            <Coins size={14} className="shrink-0 text-[#2775CA]" />
-            <span>
-              Protocol fee <b>{result.protocolFee.accruedUsd} USDC</b> ({result.feeBps} bps) →{' '}
-              {short(result.treasury)}
-              {result.protocolFee.settled ? ', settled' : result.protocolFee.note ? `, ${result.protocolFee.note}` : ''}
-            </span>
-            {result.protocolFee.settled && result.protocolFee.transaction && (
-              <span className="ml-auto font-mono text-[10px] text-ink/40">batch {result.protocolFee.transaction.slice(0, 8)}...</span>
-            )}
-          </div>
+          {allRevealed && (
+            <div className="flex items-center gap-2 rounded-lg border border-[#2775CA]/25 bg-[#2775CA]/[0.05] px-3 py-2 text-ink/75 motion-safe:animate-[fadeIn_0.4s_ease-out]">
+              <Coins size={14} className="shrink-0 text-[#2775CA]" />
+              <span>
+                Protocol fee <b>{executed.protocolFee.accruedUsd} USDC</b> ({executed.feeBps} bps) →{' '}
+                {short(executed.treasury)}
+                {executed.protocolFee.settled
+                  ? ', settled'
+                  : executed.protocolFee.note
+                    ? `, ${executed.protocolFee.note}`
+                    : ''}
+              </span>
+              {executed.protocolFee.settled && executed.protocolFee.transaction && (
+                <span className="ml-auto font-mono text-[10px] text-ink/40">batch {executed.protocolFee.transaction.slice(0, 8)}...</span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -44,6 +44,34 @@ The backend reads the **real deployed contracts** on Arc Testnet, no mocks:
 Writes (agent registration, job escrow) are wired against the same contracts and
 broadcast for real once a funded signer key is present.
 
+## Try it in 60 seconds (judge mode)
+
+No install, no keys — it is already live:
+
+1. **Open the app:** [a-identity.xyz](https://a-identity.xyz)
+2. **Prove the backend is real** (a live on-chain read, not a mock):
+
+   ```bash
+   curl https://a-identity-backend.onrender.com/api/arc/contracts
+   ```
+3. **Open the real transactions on Arc** — the "Proof it's real" links below.
+
+### Proof it's real (Arc testnet)
+
+Every claim here is a transaction you can open on [arcscan](https://testnet.arcscan.app):
+
+- **Showcase agent "Meridian"** — ERC-8004 id **#849980**, KYA attested on-chain, reputation
+  from real settlements. Anchor tx:
+  [`0x506b125f…`](https://testnet.arcscan.app/tx/0x506b125f3a0481667e3a00dcb86f48cbcaa35c643af963365e9389b06a8f8e54) ·
+  KYA attestation:
+  [`0x758ddbfa…`](https://testnet.arcscan.app/tx/0x758ddbfad38daeb772a37deb07e65339f13aeb393899fc7e1d2689c95adf0dad)
+- **ERC-8183 escrow job #155504** — full lifecycle settled on Arc: createJob
+  [`0xcce5a56c…`](https://testnet.arcscan.app/tx/0xcce5a56cc0518d5760f90d11d88eb70d5097636179eb3e92903152a96a684cc5) →
+  complete
+  [`0x245f0ee7…`](https://testnet.arcscan.app/tx/0x245f0ee76a6d8dd21e8a14cbd1f489a3d80a1824113316f3b39c58c0e50f25e3)
+- **Circle Gateway** — USDC deposited on Arc, moved to Base Sepolia gaslessly and minted there:
+  [recipient on Basescan](https://sepolia.basescan.org/address/0xd305607510E0Db2c95807173c7A05BEA53c1ed36)
+
 ### On-chain policy vault — programmable money that enforces itself
 
 An agent's spend policy can be deployed **as its own smart contract on Arc**:
@@ -121,7 +149,7 @@ GET  /api/circle                Circle platform link (real ping w/ CIRCLE_API_KE
 POST /api/wallets               create a real Arc keypair (key returned once)
 GET  /api/wallet-balance        live native-USDC balance
 POST /api/agents                register an agent (KYA + permissions)
-POST /api/instructions          pay / purchase/rental / batch (policy engine)
+POST /api/instructions          pay / purchase / rental / batch (policy engine)
 POST /api/instructions/approve  human approval
 POST /api/instructions/execute  execute (through the vault if provisioned, else direct; simulated without a signer)
 POST /api/agents/vault          provision an on-chain AgentSpendPolicy vault (real w/ key)
@@ -147,7 +175,7 @@ npm install
 npm install --prefix mcp
 
 # 2. Run everything (UI + MCP backend + docs)
-npm run dev: all
+npm run dev:all
 #   UI    -> http://localhost:5173
 #   MCP   -> http://localhost:3399
 #   Docs  -> http://localhost:3000

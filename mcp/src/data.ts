@@ -67,7 +67,10 @@ export const CHAIN_CONFIG = [
     evmCompatible: true, color: '#2775CA',
     identity: 'ERC-8004', erc8004Native: true, x402: true,
     role: 'Primary payment rail: gas in USDC, sub-second finality, App Kit unified balance.',
-    status: 'preview',
+    // Live: the core flow (identity, KYA, vault, USDC settlement) runs on Arc testnet
+    // today with real transactions — matching the "Live on Arc testnet" story on the site.
+    // base/arbitrum stay 'preview' (EVM fallbacks, not yet wired end to end).
+    status: 'live',
   },
   {
     id: 'base', name: 'Base', shortName: 'Base', chainId: 8453,

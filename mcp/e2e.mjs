@@ -178,7 +178,10 @@ async function main() {
   phase('F. Agents')
   const createRes = await api('POST', '/api/agents', {
     token: alice,
-    body: { name: `E2E Agent ${Date.now()}`, category: 'Trading / Finance', capabilities: ['Payments'] },
+    // A showcased agent carries a description, so it is presentable in the default
+    // Agent House feed (which now sorts by prominence and hides contentless scaffold
+    // rows — no description, no wallet, unverified, never anchored; pass ?all=1 to see all).
+    body: { name: `E2E Agent ${Date.now()}`, description: 'Autonomous trading agent (E2E)', category: 'Trading / Finance', capabilities: ['Payments'] },
   })
   const agentId = createRes.json?.agent?.id
   check('agent created with an owner', createRes.status === 201 && !!agentId && !!createRes.json?.agent?.owner)

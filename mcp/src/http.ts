@@ -644,7 +644,8 @@ const server = http.createServer(async (req, res) => {
 
   // ── Platform: marketplace (Agent House) ──────────────────────────────────────
   if (req.method === 'GET' && url.pathname === '/api/marketplace') {
-    sendJson(res, 200, marketplace(url.searchParams.get('viewer') ?? undefined))
+    const includeAll = url.searchParams.get('all') === '1'
+    sendJson(res, 200, marketplace(url.searchParams.get('viewer') ?? undefined, includeAll))
     return
   }
   if (req.method === 'POST' && url.pathname === '/api/follow') {
