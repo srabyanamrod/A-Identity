@@ -126,6 +126,12 @@ The same system in three views (also drop-in slides for a deck):
 
 ![Circle products on Arc, each wired to real code](docs/images/architecture-circle.png)
 
+### Functional MVP: a working frontend and backend
+
+![The app: a React console (Agent ID, Wallet, Settlements, Permissions, Agent House, Overview) where a human stays in control, every screen reading live data from Arc.](docs/images/frontend.png)
+
+![The backend: one Node HTTP server on Render, a REST API for the app and MCP tools for agents, reading the real Arc contracts and settling real USDC. chainId 5042002, contracts reachable, full E2E 39/39.](docs/images/backend.png)
+
 ```
 a-identity/
 ├─ src/               React 19 + Vite + Tailwind v4 frontend (landing, app, blog, use cases)
