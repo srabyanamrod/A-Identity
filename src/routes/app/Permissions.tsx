@@ -115,6 +115,22 @@ export default function Permissions() {
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ agentId, permissions: draft }),
       })
+      // Fail loudly instead of showing a false "saved": a guest (401) or a caller who
+      // does not own this agent (403) is rejected by the backend, and the limits revert
+      // on reload — which reads as "I set it but nothing changed".
+      if (res.status === 401) {
+        setError('Sign in with a wallet or email link to change limits (guests are read-only).')
+        return
+      }
+      if (res.status === 403) {
+        setError('You can only change limits on an agent you own. Register your own agent, then set its limits here.')
+        return
+      }
+      if (!res.ok) {
+        setError('Could not save the policy. Please try again.')
+        return
+      }
+      setError(null)
       // When the agent has an on-chain vault, the backend reports whether it pushed
       // the new limits on-chain (or that the owner must sign the change).
       const j = (await res.json().catch(() => null)) as { agent?: { vaultSync?: VaultSyncNote } } | null
@@ -123,7 +139,7 @@ export default function Permissions() {
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch {
-      setError('Save failed. Is the backend running?')
+      setError('Save failed. The backend may be waking up; try again in a moment.')
     } finally {
       setSaving(false)
     }

@@ -872,10 +872,20 @@ export function createInstruction(input: {
 
   const payeeAllowed = p.payeeAllowlist.length === 0 || p.payeeAllowlist.includes(input.payee)
   const spentToday = dailySpent(agent)
+  // A 0x… payee is a human wallet; anything else (agent://<id> or a bare agent id/name)
+  // is another agent. The two toggles gate which of those the agent may pay on its own.
+  // Undefined-safe: only an explicit `false` blocks, so older agents stay permissive.
+  const isHumanPayee = /^0x[0-9a-fA-F]{40}$/.test(input.payee)
+  const payeeTypeAllowed = isHumanPayee ? p.agentToHuman !== false : p.agentToAgent !== false
 
   if (p.frozen) {
     status = 'pending_approval'
     policyNote = 'Agent is frozen; all activity is paused. A human must unfreeze or approve.'
+  } else if (!payeeTypeAllowed) {
+    status = 'pending_approval'
+    policyNote = isHumanPayee
+      ? 'Agent-to-human payments are turned off for this agent; a human must approve.'
+      : 'Agent-to-agent payments are turned off for this agent; a human must approve.'
   } else if (!payeeAllowed) {
     status = 'pending_approval'
     policyNote = `Payee not on the allowlist; a human must approve.`

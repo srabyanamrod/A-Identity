@@ -221,7 +221,9 @@ async function main() {
   phase('J. Settlement')
   const payerRes = await api('POST', '/api/agents', { token: alice, body: { name: `E2E Payer ${Date.now()}`, category: 'Trading / Finance', capabilities: ['Payments'] } })
   const payer = payerRes.json?.agent?.id
-  await api('POST', '/api/agents/permissions', { token: alice, body: { agentId: payer, permissions: { dailyCapUsd: 1000, autoApproveUnderUsd: 1000 } } })
+  // This agent settles to a human 0x wallet below, so agent-to-human must be enabled
+  // (the toggle is now enforced by the policy engine, off by default).
+  await api('POST', '/api/agents/permissions', { token: alice, body: { agentId: payer, permissions: { dailyCapUsd: 1000, autoApproveUnderUsd: 1000, agentToHuman: true } } })
   const payee = privateKeyToAccount(generatePrivateKey()).address
   const ixPay = await api('POST', '/api/instructions', { token: alice, body: { agentId: payer, type: 'payment', amountUsd: 0.01, payee } })
   check('settlement payment auto-approves', ixPay.json?.status === 'auto_approved', ixPay.json?.status)
