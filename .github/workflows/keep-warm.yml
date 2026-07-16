@@ -11,25 +11,41 @@ on:
   workflow_dispatch: {} # allow a manual "wake it now" run
 
 # Override in repo Settings → Secrets and variables → Actions → Variables if the host changes.
+# ASP_URL is the OKX ASP gateway (a second free Render service); set the repo variable
+# ASP_URL to its real host once created (default assumes it is named "a-identity-asp").
 env:
   BACKEND_URL: ${{ vars.BACKEND_URL || 'https://a-identity-backend.onrender.com' }}
+  ASP_URL: ${{ vars.ASP_URL || 'https://a-identity-asp.onrender.com' }}
 
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
-      - name: Ping /health until it responds (waits out a cold boot)
+      - name: Ping the main backend /health until it responds (waits out a cold boot)
         run: |
           for i in $(seq 1 12); do
             code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$BACKEND_URL/health" || echo 000)
-            echo "attempt $i -> HTTP $code"
+            echo "backend attempt $i -> HTTP $code"
             if [ "$code" = "200" ]; then
               echo "backend is warm"
-              exit 0
+              break
             fi
             sleep 8
           done
-          echo "backend did not return 200 in time (it may still be booting)"
           # Do not fail the workflow: a transient miss shouldn't spam failure emails.
+          exit 0
+
+      - name: Ping the OKX ASP gateway /health until it responds
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$ASP_URL/health" || echo 000)
+            echo "asp attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "asp gateway is warm"
+              break
+            fi
+            sleep 8
+          done
+          # The ASP service may not exist yet (before the demo) — never fail the run.
           exit 0
