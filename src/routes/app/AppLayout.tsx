@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   ArrowLeftRight,
@@ -14,6 +15,7 @@ import Logo from '../../components/Logo'
 import { useAuth } from '../../store/auth'
 import { APP_NAME } from '../../lib/brand'
 import { useMcpHealth } from '../../hooks/useMcp'
+import { wakeBackend } from '../../lib/api'
 
 const NAV = [
   { to: '/app', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -43,6 +45,13 @@ export default function AppLayout() {
   // A user with no token is a browse-only guest: reads work, but the backend rejects
   // their writes. Surface that up front so an action never fails silently.
   const isGuest = Boolean(user) && !token
+
+  // Pre-warm the free-tier backend the moment the console opens, so it is already awake
+  // by the time the user clicks Anchor / Execute / Provision — heading off the cold-start
+  // 502 instead of hitting it on the first action.
+  useEffect(() => {
+    wakeBackend()
+  }, [])
 
   const current = [...NAV].reverse().find((n) => location.pathname.startsWith(n.to))
   const title = current?.label ?? 'Overview'

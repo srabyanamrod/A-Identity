@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Boxes, CheckCircle2, ExternalLink, Loader2, ArrowRight } from 'lucide-react'
-import { MCP_BASE } from '../../lib/mcpBase'
+import { apiFetch } from '../../lib/api'
 import { authHeaders } from '../../store/auth'
 
 type Step = { step: string; txHash: string; explorerUrl: string }
@@ -26,11 +26,11 @@ export default function EscrowPanel() {
     setError(null)
     setResult(null)
     try {
-      const res = await fetch(`${MCP_BASE}/api/arc/job-demo`, {
+      const res = await apiFetch('/api/arc/job-demo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ budgetUsd: Number(budget) || 0.02 }),
-        signal: AbortSignal.timeout(90000),
+        timeoutMs: 150_000, // 6 real on-chain txs back-to-back
       })
       if (res.status === 401 || res.status === 403) {
         setError('Sign in with a wallet or email link to run a real escrow job (guests are read-only).')

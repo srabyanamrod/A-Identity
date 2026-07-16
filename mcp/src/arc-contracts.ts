@@ -12,6 +12,19 @@ import { AgentSpendPolicyAbi, AgentSpendPolicyBytecode } from './contracts/Agent
 export const ARC_RPC = 'https://rpc.testnet.arc.network'
 export const ARC_EXPLORER = 'https://testnet.arcscan.app'
 
+/**
+ * Arc testnet RPC endpoints, primary first. We build a viem `fallback` transport over
+ * these so a single flaky endpoint (the "RPC Request failed" the escrow demo hit) rolls
+ * over to the next one instead of failing the whole on-chain call. Override the primary
+ * with ARC_RPC_URL if needed.
+ */
+export const ARC_RPCS: string[] = [
+  process.env.ARC_RPC_URL || ARC_RPC,
+  'https://rpc.blockdaemon.testnet.arc.network',
+  'https://rpc.drpc.testnet.arc.network',
+  'https://rpc.quicknode.testnet.arc.network',
+].filter((v, i, a) => v && a.indexOf(v) === i)
+
 /** Deployed on Arc Testnet (docs.arc.io). */
 export const CONTRACTS = {
   identityRegistry: '0x8004A818BFB912233c491871b3d84c89A494BD9e',
@@ -84,25 +97,35 @@ const JOB_STATUS = ['Open', 'Funded', 'Submitted', 'Completed', 'Rejected', 'Exp
 
 // ── clients ────────────────────────────────────────────────────────────────────
 
+/** A fallback transport over every Arc RPC, so one flaky endpoint rolls to the next
+ *  instead of failing the call. Each endpoint retries a couple of times on its own. */
+async function arcTransport() {
+  const { http, fallback } = await import('viem')
+  return fallback(
+    ARC_RPCS.map((url) => http(url, { timeout: 8000, retryCount: 2, retryDelay: 400 })),
+    { rank: false },
+  )
+}
+
 async function publicClient() {
-  const { createPublicClient, http } = await import('viem')
-  return createPublicClient({ transport: http(ARC_RPC, { timeout: 8000, retryCount: 1 }) })
+  const { createPublicClient } = await import('viem')
+  return createPublicClient({ transport: await arcTransport() })
 }
 
 /** Present only when ARC_SIGNER_KEY is set. Human-on-the-loop lives one level up. */
 async function walletClient(env: NodeJS.ProcessEnv) {
   const key = env.ARC_SIGNER_KEY
   if (!key) return null
-  const { createWalletClient, http, defineChain } = await import('viem')
+  const { createWalletClient, defineChain } = await import('viem')
   const { privateKeyToAccount } = await import('viem/accounts')
   const chain = defineChain({
     id: 5042002,
     name: 'Arc Testnet',
     nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 18 },
-    rpcUrls: { default: { http: [ARC_RPC] } },
+    rpcUrls: { default: { http: ARC_RPCS } },
   })
   const account = privateKeyToAccount(key as `0x${string}`)
-  return { client: createWalletClient({ account, chain, transport: http(ARC_RPC) }), account }
+  return { client: createWalletClient({ account, chain, transport: await arcTransport() }), account }
 }
 
 const tx = (h: string) => `${ARC_EXPLORER}/tx/${h}`

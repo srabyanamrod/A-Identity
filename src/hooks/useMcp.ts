@@ -10,6 +10,7 @@ import {
   type ChainStatus,
   type Reputation,
 } from '../lib/mcp-client'
+import { wakeBackend } from '../lib/api'
 
 // ── health ───────────────────────────────────────────────────────────────────
 
@@ -37,9 +38,14 @@ export function useMcpHealth(): McpStatus {
         timer = setTimeout(tick, 12_000)
         return
       }
+      // Actively wake a cold free-tier backend (direct no-cors ping bypasses the proxy's
+      // ~30s cap) instead of passively polling a proxy that 502s during the boot window.
+      wakeBackend()
       attempts += 1
-      setStatus(attempts >= 12 ? 'offline' : 'waking')
-      timer = setTimeout(tick, attempts >= 12 ? 12_000 : 3_000)
+      // Keep trying for longer before calling it "offline": a cold boot + wake can take
+      // north of a minute, and the keep-warm cron usually prevents this entirely.
+      setStatus(attempts >= 20 ? 'offline' : 'waking')
+      timer = setTimeout(tick, attempts >= 20 ? 15_000 : 3_000)
     }
 
     tick()

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Globe, CheckCircle2, ExternalLink, Loader2, ArrowRight, Zap } from 'lucide-react'
-import { MCP_BASE } from '../../lib/mcpBase'
+import { apiFetch } from '../../lib/api'
 import { authHeaders } from '../../store/auth'
 
 type Result =
@@ -31,11 +31,11 @@ export default function GatewayPanel() {
     setError(null)
     setResult(null)
     try {
-      const res = await fetch(`${MCP_BASE}/api/arc/gateway-demo`, {
+      const res = await apiFetch('/api/arc/gateway-demo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ amountUsd: Number(amount) || 0.1 }),
-        signal: AbortSignal.timeout(120000),
+        timeoutMs: 120_000,
       })
       if (res.status === 401 || res.status === 403) {
         setError('Sign in with a wallet or email link to move real USDC (guests are read-only).')

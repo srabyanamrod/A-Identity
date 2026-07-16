@@ -14,7 +14,7 @@ import { useAuth } from '../../store/auth'
 import { useMcpHealth } from '../../hooks/useMcp'
 import { CHAINS } from '../../lib/chains'
 
-import { MCP_BASE } from '../../lib/mcpBase'
+import { apiFetch } from '../../lib/api'
 import { fetchPlatformAgents } from '../../lib/platformAgents'
 import { pickPrimaryAgent } from '../../lib/pickAgent'
 
@@ -72,15 +72,15 @@ export default function Dashboard() {
         if (!first) return
         setAgent(first)
         const [repRes, ixRes] = await Promise.all([
-          fetch(`${MCP_BASE}/api/agents/reputation?agentId=${first.id}`).then((r) => r.json()).catch(() => null),
-          fetch(`${MCP_BASE}/api/instructions?agentId=${first.id}`).then((r) => r.json()).catch(() => null),
+          apiFetch(`/api/agents/reputation?agentId=${first.id}`).then((r) => r.json()).catch(() => null),
+          apiFetch(`/api/instructions?agentId=${first.id}`).then((r) => r.json()).catch(() => null),
         ])
         if (cancelled) return
         if (repRes && !('error' in repRes) && typeof repRes.score === 'number') setRep(repRes.score)
         if (Array.isArray(ixRes?.instructions))
           setSettlements(ixRes.instructions.filter((i: { status: string }) => i.status === 'executed_onchain').length)
         if (first.walletAddress) {
-          const bal = await fetch(`${MCP_BASE}/api/wallet-balance?address=${first.walletAddress}`)
+          const bal = await apiFetch(`/api/wallet-balance?address=${first.walletAddress}`)
             .then((r) => r.json())
             .catch(() => null)
           if (!cancelled && bal?.balance != null) setBalance(Number(bal.balance))

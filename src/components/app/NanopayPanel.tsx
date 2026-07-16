@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Gauge, CheckCircle2, ExternalLink, Loader2, Zap } from 'lucide-react'
-import { MCP_BASE } from '../../lib/mcpBase'
+import { apiFetch } from '../../lib/api'
 import { authHeaders } from '../../store/auth'
 
 type Result =
@@ -35,11 +35,11 @@ export default function NanopayPanel() {
     setError(null)
     setResult(null)
     try {
-      const res = await fetch(`${MCP_BASE}/api/arc/nanopay-demo`, {
+      const res = await apiFetch('/api/arc/nanopay-demo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ amountUsd: Number(amount) || 0.001 }),
-        signal: AbortSignal.timeout(120000),
+        timeoutMs: 120_000,
       })
       if (res.status === 401 || res.status === 403) {
         setError('Sign in with a wallet or email link to run a real nanopayment (guests are read-only).')

@@ -1,0 +1,35 @@
+name: keep-warm
+
+# Keep the free-tier Render backend from spinning down (it sleeps after ~15 min idle,
+# then needs ~50s to wake — which, through the Vercel proxy's ~30s cap, shows up as a
+# hard 502 in the app). Pinging /health every ~10 min keeps it hot so a live demo never
+# hits a cold start. This is the free mitigation; the definitive fix is upgrading Render
+# to a paid Starter plan (no spin-down) — see README "Reliability / keeping the backend warm".
+on:
+  schedule:
+    - cron: '*/10 * * * *' # every 10 minutes (GitHub may delay under load; margin vs the 15-min idle window)
+  workflow_dispatch: {} # allow a manual "wake it now" run
+
+# Override in repo Settings → Secrets and variables → Actions → Variables if the host changes.
+env:
+  BACKEND_URL: ${{ vars.BACKEND_URL || 'https://a-identity-backend.onrender.com' }}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping /health until it responds (waits out a cold boot)
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$BACKEND_URL/health" || echo 000)
+            echo "attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "backend is warm"
+              exit 0
+            fi
+            sleep 8
+          done
+          echo "backend did not return 200 in time (it may still be booting)"
+          # Do not fail the workflow: a transient miss shouldn't spam failure emails.
+          exit 0

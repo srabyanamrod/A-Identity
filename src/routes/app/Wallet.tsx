@@ -8,14 +8,16 @@ import {
   Wallet as WalletIcon,
 } from 'lucide-react'
 
-import { MCP_BASE, BACKEND_UNREACHABLE } from '../../lib/mcpBase'
-import { fetchPlatformAgents } from '../../lib/platformAgents'
+import { BACKEND_UNREACHABLE } from '../../lib/mcpBase'
+import { apiFetch, readJson } from '../../lib/api'
+import { fetchPlatformAgents, subscribePlatformAgents } from '../../lib/platformAgents'
 import { pickPrimaryAgent } from '../../lib/pickAgent'
 import { CircleWalletPanel, TreasuryPanel } from '../../components/app/WalletPanels'
 const FAUCET = 'https://faucet.circle.com'
 
 type Agent = { id: string; name: string; walletAddress: string | null }
 type Balance = { address: string; balance: string | null; symbol: string; source: string }
+type AssetBalances = { usdcUsd: number; eurcUsd: number; usycUsd: number; idleUsd: number; totalUsd: number }
 type Instruction = {
   id: string
   amountUsd: number
@@ -34,43 +36,54 @@ export default function Wallet() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [agentId, setAgentId] = useState('')
   const [balance, setBalance] = useState<Balance | null>(null)
+  const [assets, setAssets] = useState<AssetBalances | null>(null)
   const [txs, setTxs] = useState<Instruction[]>([])
   const [loadingBal, setLoadingBal] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  useEffect(() => {
-    ;(async () => {
-      try {
-        const data = await fetchPlatformAgents<Agent>()
-        setAgents(data.agents)
-        if (data.agents.length) setAgentId((cur) => cur || pickPrimaryAgent(data.agents)?.id || data.agents[0].id)
-      } catch {
-        setError(BACKEND_UNREACHABLE)
-      } finally {
-        setLoaded(true)
-      }
-    })()
+  const loadAgents = useCallback(async (force = false) => {
+    try {
+      const data = await fetchPlatformAgents<Agent>({ force })
+      setAgents(data.agents)
+      if (data.agents.length) setAgentId((cur) => cur || pickPrimaryAgent(data.agents)?.id || data.agents[0].id)
+      setError(null)
+    } catch {
+      setError(BACKEND_UNREACHABLE)
+    } finally {
+      setLoaded(true)
+    }
   }, [])
+
+  useEffect(() => {
+    loadAgents()
+    // Refresh the roster when an agent is created/anchored elsewhere in the app.
+    return subscribePlatformAgents(() => loadAgents(true))
+  }, [loadAgents])
 
   const agent = agents.find((a) => a.id === agentId)
 
   const refresh = useCallback(async (a: Agent | undefined) => {
     if (!a) return
     // Real recent payments for this agent.
-    fetch(`${MCP_BASE}/api/instructions?agentId=${a.id}`, { signal: AbortSignal.timeout(6000) })
+    apiFetch(`/api/instructions?agentId=${a.id}`)
       .then((r) => r.json())
       .then((d: { instructions: Instruction[] }) => setTxs([...d.instructions].reverse().slice(0, 8)))
       .catch(() => setTxs([]))
+    // Live multi-asset balances (USDC / EURC / USYC) read from Arc, via the treasury
+    // read (which returns all three), so the wallet shows every token it holds — not
+    // only the native USDC gas balance. Best-effort: the hero USDC below is separate.
+    apiFetch(`/api/agents/treasury?agentId=${a.id}`)
+      .then((r) => readJson<{ balances?: AssetBalances; error?: string }>(r))
+      .then((d) => setAssets(d.balances ?? null))
+      .catch(() => setAssets(null))
     // Live on-chain USDC balance, if the agent has a wallet.
     if (a.walletAddress) {
       setLoadingBal(true)
       try {
-        const r = await fetch(`${MCP_BASE}/api/wallet-balance?address=${a.walletAddress}`, {
-          signal: AbortSignal.timeout(8000),
-        })
-        setBalance((await r.json()) as Balance)
+        const r = await apiFetch(`/api/wallet-balance?address=${a.walletAddress}`)
+        setBalance(await readJson<Balance>(r))
       } catch {
         setBalance(null)
       } finally {
@@ -199,6 +212,31 @@ export default function Wallet() {
               )}
             </div>
           </div>
+
+          {/* Token balances: every asset the wallet holds on Arc, not just native USDC.
+              (Useful when the faucet funds EURC, or idle USDC is parked in USYC.) */}
+          {agent.walletAddress && assets && (
+            <div className="mt-4">
+              <div className="mb-2 text-xs font-semibold text-ink/50">Token balances on Arc</div>
+              <div className="grid grid-cols-3 gap-2.5">
+                {([
+                  { t: 'USDC', v: assets.usdcUsd },
+                  { t: 'EURC', v: assets.eurcUsd },
+                  { t: 'USYC', v: assets.usycUsd },
+                ] as const).map(({ t, v }) => (
+                  <div key={t} className="rounded-2xl border border-black/[0.06] bg-white px-4 py-3">
+                    <div className="text-xs font-semibold text-ink/55">{t}</div>
+                    <div className="mt-1 text-lg font-semibold tracking-tight text-ink tabular-nums">
+                      ${v.toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[11px] text-ink/40">
+                Read live from Arc. USYC is yield-bearing — manage it in Treasury below.
+              </p>
+            </div>
+          )}
 
           {/* Human-on-the-loop */}
           <div className="mt-4 flex items-start gap-3 rounded-2xl border border-accent/20 bg-accent/[0.05] p-4">

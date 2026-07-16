@@ -11,7 +11,8 @@ import {
 } from 'lucide-react'
 import { authHeaders, useAuth } from '../../store/auth'
 
-import { MCP_BASE, BACKEND_UNREACHABLE } from '../../lib/mcpBase'
+import { BACKEND_UNREACHABLE } from '../../lib/mcpBase'
+import { apiFetch, readJson, explainError } from '../../lib/api'
 
 /** Shorten any full 40-hex address inside activity text so it never overflows the card. */
 const humanizeActivity = (text: string) =>
@@ -56,8 +57,8 @@ export default function Marketplace() {
 
   const load = useCallback(async () => {
     try {
-      const url = `${MCP_BASE}/api/marketplace?viewer=${encodeURIComponent(viewer)}${showAll ? '&all=1' : ''}`
-      const res = await fetch(url, { signal: AbortSignal.timeout(6000) })
+      const url = `/api/marketplace?viewer=${encodeURIComponent(viewer)}${showAll ? '&all=1' : ''}`
+      const res = await apiFetch(url)
       const data = (await res.json()) as { agents: MarketAgent[]; total?: number; totalAll?: number }
       setAgents(data.agents)
       setCounts({ total: data.total ?? data.agents.length, totalAll: data.totalAll ?? data.agents.length })
@@ -87,7 +88,7 @@ export default function Marketplace() {
       ),
     )
     try {
-      await fetch(`${MCP_BASE}/api/follow`, {
+      await apiFetch('/api/follow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ agentId, follower: viewer }),
@@ -103,26 +104,32 @@ export default function Marketplace() {
     setAnchoringId(agentId)
     setAnchorNote((n) => ({ ...n, [agentId]: '' }))
     try {
-      const res = await fetch(`${MCP_BASE}/api/agents/anchor`, {
+      const res = await apiFetch('/api/agents/anchor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ agentId }),
+        timeoutMs: 90_000, // an on-chain ERC-8004 register can take a while to confirm
+        onWaking: () => setAnchorNote((n) => ({ ...n, [agentId]: 'Waking up the backend (free tier)…' })),
       })
-      const data = (await res.json()) as {
+      const data = await readJson<{
         agent?: { onchain?: string; onchainTx?: string; onchainExplorer?: string; onchainAgentId?: string }
         result?: { executed?: boolean; reason?: string }
         error?: string
-      }
-      if (data.result?.executed && data.agent) {
+      }>(res)
+      if (res.ok && data.result?.executed && data.agent) {
         setAgents((prev) => prev.map((a) => (a.id === agentId ? { ...a, ...data.agent } : a)))
+        setAnchorNote((n) => ({ ...n, [agentId]: '' }))
+      } else if (!res.ok) {
+        // 403 = you don't own this agent; 401 = guest; 5xx = backend waking. Say which.
+        setAnchorNote((n) => ({ ...n, [agentId]: explainError(res.status, data.error) }))
       } else {
         setAnchorNote((n) => ({
           ...n,
-          [agentId]: data.result?.reason ?? data.error ?? 'Could not broadcast. Set a funded ARC_SIGNER_KEY on the server.',
+          [agentId]: data.result?.reason ?? data.error ?? 'Could not broadcast. The server needs a funded ARC_SIGNER_KEY.',
         }))
       }
     } catch {
-      setAnchorNote((n) => ({ ...n, [agentId]: 'Anchoring needs the MCP server with a funded ARC_SIGNER_KEY.' }))
+      setAnchorNote((n) => ({ ...n, [agentId]: 'Anchoring timed out. The backend may be waking up — try again in a moment.' }))
     } finally {
       setAnchoringId(null)
     }
@@ -197,8 +204,9 @@ export default function Marketplace() {
         </div>
       )}
 
-      {/* Agent cards */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+      {/* Agent cards. items-start so a card expanding its Activity list grows on its own
+          instead of stretching its row-mate and shifting the whole layout. */}
+      <div className="mt-6 grid items-start gap-4 sm:grid-cols-2">
         {agents.map((a) => (
           <div key={a.id} className="flex flex-col rounded-2xl border border-ink/10 bg-white p-6">
             <div className="flex items-start justify-between gap-3">
@@ -313,7 +321,7 @@ export default function Marketplace() {
               {openActivity === a.id ? 'Hide activity' : `Activity (${a.activity.length})`}
             </button>
             {openActivity === a.id && (
-              <ul className="mt-2 flex flex-col gap-2">
+              <ul className="mt-2 flex max-h-56 flex-col gap-2 overflow-y-auto pr-1">
                 {a.activity.map((ev, i) => (
                   <li key={i} className="flex items-start gap-2 text-xs text-ink/60">
                     <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent" />

@@ -8,7 +8,8 @@ import EscrowPanel from '../../components/app/EscrowPanel'
 import GatewayPanel from '../../components/app/GatewayPanel'
 import CctpPanel from '../../components/app/CctpPanel'
 
-import { MCP_BASE, BACKEND_UNREACHABLE } from '../../lib/mcpBase'
+import { BACKEND_UNREACHABLE } from '../../lib/mcpBase'
+import { apiFetch, readJson, explainError } from '../../lib/api'
 import { fetchPlatformAgents } from '../../lib/platformAgents'
 import { pickPrimaryAgent } from '../../lib/pickAgent'
 
@@ -66,7 +67,7 @@ export default function Settlements() {
 
   const load = useCallback(async (id: string) => {
     try {
-      const res = await fetch(`${MCP_BASE}/api/instructions?agentId=${id}`, { signal: AbortSignal.timeout(6000) })
+      const res = await apiFetch(`/api/instructions?agentId=${id}`)
       const data = (await res.json()) as { instructions: Instruction[] }
       // Pin real on-chain settlements to the top, then the active queue, then rejected,
       // then simulated rows, so the on-chain proof leads instead of being buried under
@@ -95,8 +96,9 @@ export default function Settlements() {
   const createPayment = async () => {
     if (!agentId) return
     setBusy('create')
+    setError(null)
     try {
-      await fetch(`${MCP_BASE}/api/instructions`, {
+      const res = await apiFetch('/api/instructions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
@@ -105,11 +107,18 @@ export default function Settlements() {
           amountUsd: Number(amount) || 0,
           payee: payee.trim() || 'agent://provider',
         }),
+        onWaking: () => setError('Waking up the backend (free tier)…'),
       })
+      if (!res.ok) {
+        const j = await readJson<{ error?: string }>(res)
+        setError(explainError(res.status, j.error))
+        return
+      }
       setPayee('')
+      setError(null)
       await load(agentId)
     } catch {
-      setError('Could not create the payment.')
+      setError('Could not create the payment. The backend may be waking up — try again in a moment.')
     } finally {
       setBusy(null)
     }
@@ -117,15 +126,25 @@ export default function Settlements() {
 
   const act = async (path: 'approve' | 'execute', id: string) => {
     setBusy(id)
+    setError(null)
     try {
-      await fetch(`${MCP_BASE}/api/instructions/${path}`, {
+      // Execute settles on-chain, which can take longer than a normal request; give it room.
+      const res = await apiFetch(`/api/instructions/${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ id }),
+        timeoutMs: path === 'execute' ? 90_000 : 60_000,
+        onWaking: () => setError('Waking up the backend (free tier)…'),
       })
+      if (!res.ok) {
+        const j = await readJson<{ error?: string }>(res)
+        setError(explainError(res.status, j.error))
+        return
+      }
+      setError(null)
       await load(agentId)
     } catch {
-      setError(`Could not ${path} the payment.`)
+      setError(`Could not ${path} the payment. On-chain settlement can be slow — give it a few seconds and try again.`)
     } finally {
       setBusy(null)
     }

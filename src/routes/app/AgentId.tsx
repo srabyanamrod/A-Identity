@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   BadgeCheck,
   CheckCircle2,
@@ -13,8 +13,9 @@ import {
 import { useAuth, authHeaders } from '../../store/auth'
 import { useAgentReputation, useMcpHealth, useResolveAgent } from '../../hooks/useMcp'
 import { pickPrimaryAgent } from '../../lib/pickAgent'
-import { fetchPlatformAgents, invalidatePlatformAgents } from '../../lib/platformAgents'
-import { MCP_BASE, BACKEND_UNREACHABLE } from '../../lib/mcpBase'
+import { fetchPlatformAgents, invalidatePlatformAgents, subscribePlatformAgents } from '../../lib/platformAgents'
+import { BACKEND_UNREACHABLE } from '../../lib/mcpBase'
+import { apiFetch, readJson, explainError } from '../../lib/api'
 
 type Stage = 'register' | 'verify' | 'live'
 
@@ -66,26 +67,32 @@ export default function AgentId() {
     breakdown: { settlement: number; validation: number; tenure: number }
   } | null>(null)
 
-  // Load the account's agents once; default the selection to the primary agent.
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const list = await fetchPlatformAgents<RealAgent>()
-        if (cancelled) return
-        setAgents(list.agents)
+  // Load the account's agents; default the selection to the primary agent. `select`
+  // optionally forces the selection to a specific id (used right after a create so the
+  // brand-new agent shows immediately, even though it doesn't yet outrank older ones).
+  const loadAgents = useCallback(async (opts: { force?: boolean; select?: string } = {}) => {
+    try {
+      const list = await fetchPlatformAgents<RealAgent>({ force: opts.force })
+      setAgents(list.agents)
+      if (opts.select && list.agents.some((a) => a.id === opts.select)) {
+        setSelectedId(opts.select)
+      } else {
         const first = pickPrimaryAgent(list.agents)
         if (first) setSelectedId((cur) => cur || first.id)
-      } catch {
-        /* keep the fallbacks */
-      } finally {
-        if (!cancelled) setRealChecked(true)
       }
-    })()
-    return () => {
-      cancelled = true
+    } catch {
+      /* keep the fallbacks */
+    } finally {
+      setRealChecked(true)
     }
   }, [])
+
+  useEffect(() => {
+    loadAgents()
+    // When an agent is created/anchored (here or elsewhere), re-fetch so the roster and
+    // the identity card reflect it without a manual page switch.
+    return subscribePlatformAgents(() => loadAgents({ force: true }))
+  }, [loadAgents])
 
   // Show whichever agent is selected and recompute its reputation live from the backend,
   // so you can run any existing agent through reputation, not just the newest one.
@@ -97,7 +104,7 @@ export default function AgentId() {
     if (!a) return
     ;(async () => {
       try {
-        const rep = await fetch(`${MCP_BASE}/api/agents/reputation?agentId=${a.id}`).then((r) => r.json())
+        const rep = await apiFetch(`/api/agents/reputation?agentId=${a.id}`).then((r) => r.json())
         if (!cancelled && rep && !('error' in rep)) setRealRep({ score: rep.score, breakdown: rep.breakdown })
       } catch {
         /* leave reputation null */
@@ -354,7 +361,12 @@ export default function AgentId() {
             {showReg ? 'Cancel' : 'New agent'}
           </button>
         </div>
-        {showReg && <RegisterForm onClose={() => setShowReg(false)} />}
+        {showReg && (
+          <RegisterForm
+            onClose={() => setShowReg(false)}
+            onCreated={(id) => loadAgents({ force: true, select: id })}
+          />
+        )}
       </div>
 
       {/* Reputation milestones */}
@@ -444,7 +456,7 @@ const CAPABILITIES = ['Payments', 'Purchases', 'Rentals', 'Batch actions'] as co
  * anchor is queued for human approval; everything else happens for real against
  * the local platform backend.
  */
-function RegisterForm({ onClose }: { onClose: () => void }) {
+function RegisterForm({ onClose, onCreated }: { onClose: () => void; onCreated?: (id: string) => void }) {
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
   const [category, setCategory] = useState(CATEGORIES[0])
@@ -488,11 +500,18 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
       const privateKey = generatePrivateKey()
       const address = privateKeyToAccount(privateKey).address
       // Register only the public address with the backend.
-      await fetch(`${MCP_BASE}/api/wallets`, {
+      const res = await apiFetch('/api/wallets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ address }),
+        onWaking: () => setError('Waking up the backend (free tier)…'),
       })
+      if (!res.ok) {
+        const j = await readJson<{ error?: string }>(res)
+        setError(explainError(res.status, j.error))
+        return
+      }
+      setError(null)
       setWallet({ address, privateKey })
     } catch {
       setError(BACKEND_UNREACHABLE)
@@ -516,8 +535,8 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
     if (!wallet) return
     setFundBusy(true)
     try {
-      const r = await fetch(`${MCP_BASE}/api/wallet-balance?address=${wallet.address}`, { signal: AbortSignal.timeout(8000) })
-      const d = (await r.json()) as { balance?: string | null }
+      const r = await apiFetch(`/api/wallet-balance?address=${wallet.address}`)
+      const d = await readJson<{ balance?: string | null }>(r)
       setFundBal(d.balance != null ? Number(d.balance) : 0)
     } catch {
       setFundBal(null)
@@ -533,7 +552,7 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
     setSubmitBusy(true)
     setError(null)
     try {
-      const res = await fetch(`${MCP_BASE}/api/agents`, {
+      const res = await apiFetch('/api/agents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
@@ -549,12 +568,17 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
           },
           walletAddress: wallet?.address,
         }),
+        onWaking: () => setError('Waking up the backend (free tier)…'),
       })
-      const data = (await res.json()) as { agent?: { id: string } }
-      if (data.agent) {
-        invalidatePlatformAgents() // a new agent joined the list, drop the shared cache
+      const data = await readJson<{ agent?: { id: string }; error?: string }>(res)
+      if (res.ok && data.agent) {
+        setError(null)
+        invalidatePlatformAgents() // a new agent joined the list; refresh every screen that lists agents
+        onCreated?.(data.agent.id) // select it on the parent so it shows immediately
         setDone(data.agent.id)
-      } else setError('Registration failed. Is the MCP server running?')
+      } else {
+        setError(explainError(res.status, data.error))
+      }
     } catch {
       setError(BACKEND_UNREACHABLE)
     } finally {
@@ -569,22 +593,29 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
     setAnchorBusy(true)
     setAnchorNote(null)
     try {
-      const res = await fetch(`${MCP_BASE}/api/agents/anchor`, {
+      const res = await apiFetch('/api/agents/anchor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ agentId: done }),
+        timeoutMs: 90_000, // an on-chain ERC-8004 register can take a while to confirm
+        onWaking: () => setAnchorNote('Waking up the backend (free tier)…'),
       })
-      const data = (await res.json()) as {
+      const data = await readJson<{
         agent?: { onchainTx?: string; onchainExplorer?: string; onchainAgentId?: string }
         result?: { executed?: boolean; reason?: string }
         error?: string
-      }
-      if (data.result?.executed && data.agent) {
-        invalidatePlatformAgents() // on-chain status changed, refresh the shared list next read
+      }>(res)
+      if (res.ok && data.result?.executed && data.agent) {
+        invalidatePlatformAgents() // on-chain status changed, refresh every screen that lists agents
+        setAnchorNote(null)
         setAnchored(data.agent)
-      } else setAnchorNote(data.result?.reason ?? data.error ?? 'Could not broadcast. Set a funded ARC_SIGNER_KEY on the server.')
+      } else if (!res.ok) {
+        setAnchorNote(explainError(res.status, data.error))
+      } else {
+        setAnchorNote(data.result?.reason ?? data.error ?? 'Could not broadcast. The server needs a funded ARC_SIGNER_KEY.')
+      }
     } catch {
-      setAnchorNote('Anchoring needs the MCP server running with a funded ARC_SIGNER_KEY.')
+      setAnchorNote('Anchoring timed out. It runs on-chain and can be slow — give it a moment and try again.')
     } finally {
       setAnchorBusy(false)
     }
@@ -598,28 +629,32 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
     setKyaBusy(true)
     setKyaNote(null)
     try {
-      const chRes = await fetch(`${MCP_BASE}/api/agents/kya/challenge`, {
+      const chRes = await apiFetch('/api/agents/kya/challenge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ agentId: done }),
+        onWaking: () => setKyaNote('Waking up the backend (free tier)…'),
       })
-      const ch = (await chRes.json()) as { message?: string; error?: string }
-      if (!ch.message) { setKyaNote(ch.error ?? 'Could not start the KYA challenge.'); return }
+      const ch = await readJson<{ message?: string; error?: string }>(chRes)
+      if (!chRes.ok || !ch.message) { setKyaNote(explainError(chRes.status, ch.error) ?? 'Could not start the KYA challenge.'); return }
       const { privateKeyToAccount } = await import('viem/accounts')
       const signature = await privateKeyToAccount(wallet.privateKey as `0x${string}`).signMessage({ message: ch.message })
-      const vRes = await fetch(`${MCP_BASE}/api/agents/kya/verify`, {
+      const vRes = await apiFetch('/api/agents/kya/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ agentId: done, message: ch.message, signature }),
+        timeoutMs: 90_000, // verify also attests on the ERC-8004 ValidationRegistry (on-chain)
       })
-      const v = (await vRes.json()) as { kya?: string; onchain?: { txHash?: string; explorerUrl?: string }; error?: string }
-      if (v.kya === 'verified') {
+      const v = await readJson<{ kya?: string; onchain?: { txHash?: string; explorerUrl?: string }; error?: string }>(vRes)
+      if (vRes.ok && v.kya === 'verified') {
+        setKyaNote(null)
+        invalidatePlatformAgents() // KYA flipped to verified; refresh the roster/showcase
         setKya({ verified: true, onchainTx: v.onchain?.txHash, onchainExplorer: v.onchain?.explorerUrl })
       } else {
-        setKyaNote(v.error ?? 'KYA verification failed.')
+        setKyaNote(explainError(vRes.status, v.error) ?? 'KYA verification failed.')
       }
     } catch {
-      setKyaNote('KYA needs the MCP server.')
+      setKyaNote('KYA timed out. The backend may be waking up — try again in a moment.')
     } finally {
       setKyaBusy(false)
     }

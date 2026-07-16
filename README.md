@@ -249,6 +249,27 @@ State persists to Postgres when `DATABASE_URL` is set, else to
 `mcp/data/platform.json` (gitignored). x402 replay protection (spent-payment
 hashes) persists the same way, so a restart can't reset it.
 
+### Reliability — keeping the backend warm (avoiding cold-start 502s)
+
+A **free** Render web service spins down after ~15 min idle and takes ~50s to wake.
+Because the frontend reaches it through a same-origin Vercel proxy whose gateway times
+out at ~30s, a cold wake shows up in the app as a hard **502** — and the poller can't
+warm it through the proxy, so "waiting" doesn't help. This is handled in three layers:
+
+1. **Definitive fix — upgrade Render to the paid Starter plan (~$7/mo).** No spin-down,
+   no cold start, instant responses. Render dashboard → the `a-identity-backend` service
+   → **Settings → Instance Type → Starter**. This is the only way to fully eliminate the
+   cold-start 502 for a live demo. Recommended before any presentation.
+2. **Keep-warm cron (free).** `.github/workflows/keep-warm.yml` pings `/health` every
+   ~10 min so the service never idles out. Set the repo Actions variable `BACKEND_URL` if
+   the host changes. Note: GitHub cron can be delayed under load, so it reduces — but
+   doesn't guarantee zero — cold starts on the free plan.
+3. **Frontend resilience (`src/lib/api.ts`).** `wakeBackend()` fires a direct `no-cors`
+   ping to the backend origin (bypassing the proxy's 30s cap so a cold boot can finish);
+   `apiFetch()` retries idempotent reads through a cold start and, for mutations, waits
+   for `/health` before sending exactly once (never double-submitting). The console
+   pre-warms the backend on mount, and screens show a "waking up" state instead of failing.
+
 ## Human-on-the-loop
 
 A-Identity never custodies a key autonomously, never deploys a contract on its

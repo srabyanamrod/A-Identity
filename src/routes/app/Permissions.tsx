@@ -15,7 +15,8 @@ import {
 import { useAuth, authHeaders } from '../../store/auth'
 import { Stat } from '../../components/app/WalletPanels'
 
-import { MCP_BASE, BACKEND_UNREACHABLE } from '../../lib/mcpBase'
+import { BACKEND_UNREACHABLE } from '../../lib/mcpBase'
+import { apiFetch, readJson, explainError } from '../../lib/api'
 import { fetchPlatformAgents } from '../../lib/platformAgents'
 const short = (a: string) => (a.length > 14 ? `${a.slice(0, 8)}...${a.slice(-4)}` : a)
 
@@ -88,7 +89,7 @@ export default function Permissions() {
 
   const loadPolicy = useCallback(async (id: string) => {
     try {
-      const res = await fetch(`${MCP_BASE}/api/agents/policy?agentId=${id}`, { signal: AbortSignal.timeout(6000) })
+      const res = await apiFetch(`/api/agents/policy?agentId=${id}`)
       const p = (await res.json()) as Policy
       setPolicy(p)
       setDraft(p.permissions)
@@ -110,24 +111,18 @@ export default function Permissions() {
     setSaved(false)
     setVaultSync(null)
     try {
-      const res = await fetch(`${MCP_BASE}/api/agents/permissions`, {
+      const res = await apiFetch('/api/agents/permissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ agentId, permissions: draft }),
+        onWaking: () => setError('Waking up the backend (free tier)…'),
       })
       // Fail loudly instead of showing a false "saved": a guest (401) or a caller who
       // does not own this agent (403) is rejected by the backend, and the limits revert
       // on reload — which reads as "I set it but nothing changed".
-      if (res.status === 401) {
-        setError('Sign in with a wallet or email link to change limits (guests are read-only).')
-        return
-      }
-      if (res.status === 403) {
-        setError('You can only change limits on an agent you own. Register your own agent, then set its limits here.')
-        return
-      }
       if (!res.ok) {
-        setError('Could not save the policy. Please try again.')
+        const j = await readJson<{ error?: string }>(res)
+        setError(explainError(res.status, j.error))
         return
       }
       setError(null)
@@ -507,16 +502,21 @@ function PolicyTester({ agentId, onSpent }: { agentId: string; onSpent: () => vo
   const run = async () => {
     setBusy(true)
     try {
-      const res = await fetch(`${MCP_BASE}/api/instructions`, {
+      const res = await apiFetch('/api/instructions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ agentId, type: 'payment', amountUsd: Number(amount) || 0, payee, memo: 'policy test' }),
+        onWaking: () => setResult({ status: 'error', policyNote: 'Waking up the backend (free tier)…' }),
       })
-      const ix = (await res.json()) as { status?: string; policyNote?: string; error?: string }
+      const ix = await readJson<{ status?: string; policyNote?: string; error?: string }>(res)
+      if (!res.ok) {
+        setResult({ status: 'error', policyNote: explainError(res.status, ix.error) })
+        return
+      }
       setResult({ status: ix.status ?? 'error', policyNote: ix.policyNote ?? ix.error ?? '' })
       onSpent()
     } catch {
-      setResult({ status: 'error', policyNote: 'Backend not reachable.' })
+      setResult({ status: 'error', policyNote: 'Backend not reachable. It may be waking up — try again.' })
     } finally {
       setBusy(false)
     }
@@ -611,7 +611,7 @@ function VaultPanel({ agentId }: { agentId: string }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${MCP_BASE}/api/agents/vault?agentId=${agentId}`, { signal: AbortSignal.timeout(8000) })
+      const res = await apiFetch(`/api/agents/vault?agentId=${agentId}`)
       setVault((await res.json()) as VaultState)
       setErr(null)
     } catch {
@@ -629,16 +629,23 @@ function VaultPanel({ agentId }: { agentId: string }) {
     setBusy(true)
     setErr(null)
     try {
-      const res = await fetch(`${MCP_BASE}/api/agents/vault`, {
+      const res = await apiFetch('/api/agents/vault', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ agentId, fundUsd: Number(fund) || 0 }),
+        timeoutMs: 90_000, // deploying a contract + funding it on-chain takes a while
+        onWaking: () => setErr('Waking up the backend (free tier)…'),
       })
-      const j = (await res.json()) as { error?: string }
+      const j = await readJson<{ error?: string }>(res)
+      if (!res.ok) {
+        setErr(explainError(res.status, j.error))
+        return
+      }
       if (j.error) setErr(j.error)
+      else setErr(null)
       await load()
     } catch {
-      setErr('Provision failed. The backend needs a funded ARC_SIGNER_KEY.')
+      setErr('Deploying the vault timed out. It runs on-chain and can be slow — give it a moment and try again.')
     } finally {
       setBusy(false)
     }

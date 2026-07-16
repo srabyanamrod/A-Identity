@@ -7,31 +7,35 @@
  *   - in-flight dedup: concurrent callers share ONE request, and
  *   - a short TTL: a navigation within the window reuses the last result.
  * After a mutation that changes the list (create agent, anchor, permissions), call
- * `invalidatePlatformAgents()` so the next read is fresh.
+ * `invalidatePlatformAgents()` so the next read is fresh — and any screen subscribed via
+ * `subscribePlatformAgents()` re-fetches immediately, so a newly created agent shows up
+ * without navigating away and back.
  *
  * Errors are NOT cached. They propagate so each screen's own try/catch still shows
  * its "backend offline" message.
  */
-import { MCP_BASE } from './mcpBase'
+import { apiFetch, readJson } from './api'
 
 const TTL_MS = 6000
 
 let cache: { at: number; data: { agents: unknown[] } } | null = null
 let inflight: Promise<{ agents: unknown[] }> | null = null
 
+const listeners = new Set<() => void>()
+
 /**
  * Fetch the platform agents, served from cache when fresh and deduped while in flight.
- * Generic over the caller's agent shape (the API objects carry every ranking field).
+ * Cold-start resilient (retries a waking backend). Generic over the caller's agent shape.
  */
 export async function fetchPlatformAgents<T = unknown>(opts: { force?: boolean } = {}): Promise<{ agents: T[] }> {
   if (!opts.force && cache && Date.now() - cache.at < TTL_MS) return cache.data as { agents: T[] }
   if (inflight) return inflight as Promise<{ agents: T[] }>
   inflight = (async () => {
     try {
-      const res = await fetch(`${MCP_BASE}/api/platform-agents`, { signal: AbortSignal.timeout(6000) })
-      const data = (await res.json()) as { agents: unknown[] }
-      cache = { at: Date.now(), data }
-      return data
+      const res = await apiFetch('/api/platform-agents')
+      const data = await readJson<{ agents: unknown[] }>(res)
+      cache = { at: Date.now(), data: { agents: data.agents ?? [] } }
+      return cache.data
     } finally {
       inflight = null
     }
@@ -39,7 +43,21 @@ export async function fetchPlatformAgents<T = unknown>(opts: { force?: boolean }
   return inflight as Promise<{ agents: T[] }>
 }
 
-/** Drop the cache so the next fetch hits the backend (call after list-changing mutations). */
+/** Drop the cache so the next fetch hits the backend, and notify subscribed screens so
+ *  they re-fetch now (call after list-changing mutations: create / anchor / KYA). */
 export function invalidatePlatformAgents(): void {
   cache = null
+  listeners.forEach((fn) => {
+    try {
+      fn()
+    } catch {
+      /* a listener throwing must not break the others */
+    }
+  })
+}
+
+/** Subscribe to "the agent list changed". Returns an unsubscribe fn (use in an effect). */
+export function subscribePlatformAgents(fn: () => void): () => void {
+  listeners.add(fn)
+  return () => listeners.delete(fn)
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ExternalLink, TrendingUp, Wallet } from 'lucide-react'
+import { Check, ExternalLink, TrendingUp, Wallet } from 'lucide-react'
 import { authHeaders } from '../../store/auth'
-import { MCP_BASE } from '../../lib/mcpBase'
+import { apiFetch, readJson, explainError } from '../../lib/api'
 
 const short = (a: string) => (a.length > 14 ? `${a.slice(0, 8)}...${a.slice(-4)}` : a)
 
@@ -43,10 +43,8 @@ export function CircleWalletPanel({ agentId }: { agentId: string }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${MCP_BASE}/api/agents/circle-wallet?agentId=${agentId}`, {
-        signal: AbortSignal.timeout(12000),
-      })
-      setWallet((await res.json()) as CircleWalletState)
+      const res = await apiFetch(`/api/agents/circle-wallet?agentId=${agentId}`)
+      setWallet(await readJson<CircleWalletState>(res))
       setErr(null)
     } catch {
       setErr('Could not load Circle wallet status.')
@@ -63,16 +61,23 @@ export function CircleWalletPanel({ agentId }: { agentId: string }) {
     setBusy(true)
     setErr(null)
     try {
-      const res = await fetch(`${MCP_BASE}/api/agents/circle-wallet`, {
+      const res = await apiFetch('/api/agents/circle-wallet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ agentId, fund: true }),
+        timeoutMs: 90_000, // Circle provisions + funds the wallet on-chain; can be slow
+        onWaking: () => setErr('Waking up the backend (free tier)…'),
       })
-      const j = (await res.json()) as { error?: string }
+      const j = await readJson<{ error?: string }>(res)
+      if (!res.ok) {
+        setErr(explainError(res.status, j.error))
+        return
+      }
       if (j.error) setErr(j.error)
+      else setErr(null)
       await load()
     } catch {
-      setErr('Provision failed. The backend needs CIRCLE_API_KEY + CIRCLE_ENTITY_SECRET.')
+      setErr('Provisioning timed out. It runs on Circle + on-chain and can be slow — give it a moment and try again.')
     } finally {
       setBusy(false)
     }
@@ -199,6 +204,8 @@ export function TreasuryPanel({ agentId }: { agentId: string }) {
   const [cap, setCap] = useState('25')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [previewing, setPreviewing] = useState(false)
+  const [savedTick, setSavedTick] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   const load = useCallback(
@@ -206,15 +213,15 @@ export function TreasuryPanel({ agentId }: { agentId: string }) {
       if (!opts?.quiet) setLoading(true)
       try {
         const q = capUsd !== undefined && capUsd !== '' ? `&cap=${Number(capUsd)}` : ''
-        const res = await fetch(`${MCP_BASE}/api/agents/treasury?agentId=${agentId}${q}`, { signal: AbortSignal.timeout(12000) })
-        const j = (await res.json()) as TreasuryState
+        const res = await apiFetch(`/api/agents/treasury?agentId=${agentId}${q}`)
+        const j = await readJson<TreasuryState>(res)
         setT(j)
         // Only sync the input to the saved cap on the first load; never overwrite what
         // the owner is actively typing.
         if (opts?.syncCap && typeof j.capUsd === 'number') setCap(String(j.capUsd))
         setErr(j.error ?? null)
       } catch {
-        setErr('Could not load treasury status.')
+        setErr('Could not load treasury status. The backend may be waking up — try again in a moment.')
       } finally {
         if (!opts?.quiet) setLoading(false)
       }
@@ -235,20 +242,41 @@ export function TreasuryPanel({ agentId }: { agentId: string }) {
     return () => clearTimeout(t)
   }, [cap, agentId, load])
 
+  // Manual Preview: same recalculation, but WITH visible feedback (spinner → check), so the
+  // button clearly does something instead of appearing dead.
+  const runPreview = async () => {
+    setPreviewing(true)
+    await load(cap, { quiet: true })
+    setPreviewing(false)
+    setSavedTick(true)
+    setTimeout(() => setSavedTick(false), 1400)
+  }
+
   const act = async (enable: boolean) => {
     setBusy(true)
     setErr(null)
     try {
-      const res = await fetch(`${MCP_BASE}/api/agents/treasury`, {
+      const res = await apiFetch('/api/agents/treasury', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(enable ? { agentId, capUsd: Number(cap) || 0 } : { agentId, enabled: false }),
+        onWaking: () => setErr('Waking up the backend (free tier)…'),
       })
-      const j = (await res.json()) as { error?: string }
-      if (j.error) setErr(j.error)
+      const j = await readJson<{ error?: string }>(res)
+      if (!res.ok) {
+        setErr(explainError(res.status, j.error))
+        return
+      }
+      if (j.error) {
+        setErr(j.error)
+      } else {
+        setErr(null)
+        setSavedTick(true)
+        setTimeout(() => setSavedTick(false), 1600)
+      }
       await load(cap)
     } catch {
-      setErr('Action failed. Is the backend running?')
+      setErr('Action failed. The backend may be waking up — give it a few seconds and try again.')
     } finally {
       setBusy(false)
     }
@@ -256,7 +284,7 @@ export function TreasuryPanel({ agentId }: { agentId: string }) {
 
   const setCapPreset = (v: number) => {
     setCap(String(v))
-    load(String(v))
+    load(String(v), { quiet: true })
   }
 
   const b = t?.balances
@@ -302,9 +330,23 @@ export function TreasuryPanel({ agentId }: { agentId: string }) {
       {loading ? (
         <div className="mt-5 text-xs text-ink/45">Loading treasury...</div>
       ) : t?.error ? (
-        <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-xs text-ink/60">{t.error}</div>
+        <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-xs leading-relaxed text-ink/70">
+          <div className="font-semibold text-amber-800">Nothing to show yet</div>
+          <p className="mt-1">{t.error}</p>
+          <p className="mt-1 text-ink/50">
+            This agent needs a funded Arc wallet before there's idle balance to put to work. Create a wallet in
+            Agent ID, fund it at faucet.circle.com, then come back here.
+          </p>
+        </div>
       ) : (
         <div className="mt-5 space-y-5">
+          {/* Plain 3-step explainer, so the panel is self-documenting for a first-time user. */}
+          <ol className="grid gap-2 rounded-2xl border border-emerald-200/60 bg-white/60 p-3 text-[11px] leading-relaxed text-ink/60 sm:grid-cols-3">
+            <li><span className="font-semibold text-ink/75">1. Set a cap.</span> How much idle USDC/EURC to keep liquid for spending.</li>
+            <li><span className="font-semibold text-ink/75">2. Preview.</span> Anything above the cap is "deployable" and its projected yield is shown.</li>
+            <li><span className="font-semibold text-ink/75">3. Authorize.</span> You approve; the surplus earmarks into USYC. Nothing moves on its own.</li>
+          </ol>
+
           <div>
             <div className="mb-2 text-[11px] font-medium text-ink/45">Wallet Balances</div>
             <div className="grid grid-cols-3 gap-2.5">
@@ -347,10 +389,19 @@ export function TreasuryPanel({ agentId }: { agentId: string }) {
               </div>
               <button
                 type="button"
-                onClick={() => load(cap, { quiet: true })}
-                className="rounded-full border border-emerald-300 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50"
+                onClick={runPreview}
+                disabled={previewing}
+                className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60"
               >
-                Preview
+                {previewing ? (
+                  'Calculating…'
+                ) : savedTick ? (
+                  <>
+                    <Check size={12} /> Updated
+                  </>
+                ) : (
+                  'Preview'
+                )}
               </button>
             </div>
           </div>
@@ -392,9 +443,9 @@ export function TreasuryPanel({ agentId }: { agentId: string }) {
                   type="button"
                   onClick={() => act(true)}
                   disabled={busy}
-                  className="rounded-full bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
                 >
-                  {busy ? 'Updating...' : 'Update Cap'}
+                  {busy ? 'Updating…' : savedTick ? <><Check size={15} /> Saved</> : 'Update Cap'}
                 </button>
                 <button
                   type="button"
@@ -413,9 +464,9 @@ export function TreasuryPanel({ agentId }: { agentId: string }) {
                 type="button"
                 onClick={() => act(true)}
                 disabled={busy}
-                className="rounded-full bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
               >
-                {busy ? 'Authorizing...' : 'Authorize Auto Yield'}
+                {busy ? 'Authorizing…' : savedTick ? <><Check size={15} /> Authorized</> : 'Authorize Auto Yield'}
               </button>
             )}
             {t?.usyc?.explorer && (

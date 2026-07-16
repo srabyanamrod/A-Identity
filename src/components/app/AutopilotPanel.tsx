@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Bot, CheckCircle2, Loader2, Hand, Coins } from 'lucide-react'
-import { MCP_BASE } from '../../lib/mcpBase'
+import { apiFetch } from '../../lib/api'
 import { authHeaders } from '../../store/auth'
 
 type Payment = { n: number; amountUsd: number; cumulativeUsd: number; ok: boolean; transaction?: string; reason?: string }
@@ -69,11 +69,11 @@ export default function AutopilotPanel() {
     setError(null)
     setResult(null)
     try {
-      const res = await fetch(`${MCP_BASE}/api/arc/agent-run`, {
+      const res = await apiFetch('/api/arc/agent-run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ amountUsd: Number(amount) || 0.005, budgetUsd: Number(budget) || 0.02, maxCalls: 6 }),
-        signal: AbortSignal.timeout(180000),
+        timeoutMs: 180_000, // a burst of gasless nanopayments
       })
       if (res.status === 401 || res.status === 403) {
         setError('Sign in with a wallet or email link to run the agent (guests are read-only).')

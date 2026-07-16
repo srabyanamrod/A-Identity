@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { encodeFunctionData } from 'viem'
 import { CheckCircle2, ExternalLink, Lock, Zap } from 'lucide-react'
 
-import { MCP_BASE } from '../../lib/mcpBase'
+import { apiFetch } from '../../lib/api'
 import { getActiveInjectedProvider, getConnectedProvider } from '../../lib/wallets'
 
 const ERC20_TRANSFER = [
@@ -52,7 +52,7 @@ export default function X402Panel() {
     try {
       // 1. Unpaid request -> expect 402 with payment requirements.
       setPhase('quoting')
-      const quote = await fetch(`${MCP_BASE}/api/x402/data`)
+      const quote = await apiFetch('/api/x402/data') // retries through a cold start; 402 is the expected quote
       if (quote.status === 501) throw new Error('x402 is not configured on the server.')
       if (quote.status !== 402) throw new Error(`Unexpected response: HTTP ${quote.status}`)
       const reqs = (await quote.json()) as { accepts: Accepts[]; nonce?: string }
@@ -85,8 +85,9 @@ export default function X402Panel() {
       setPhase('verifying')
       let paid: Resource | null = null
       for (let i = 0; i < 20; i++) {
-        const pr = await fetch(`${MCP_BASE}/api/x402/data`, {
+        const pr = await apiFetch('/api/x402/data', {
           headers: { 'X-Payment': txHash, ...(nonce ? { 'X-Payment-Nonce': nonce } : {}) },
+          retries: 0, // this loop already retries; don't double-retry inside apiFetch
         })
         if (pr.status === 200) {
           paid = (await pr.json()) as Resource

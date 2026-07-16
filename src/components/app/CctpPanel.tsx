@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ArrowLeftRight, CheckCircle2, ExternalLink, Loader2, Flame } from 'lucide-react'
-import { MCP_BASE } from '../../lib/mcpBase'
+import { apiFetch } from '../../lib/api'
 import { authHeaders } from '../../store/auth'
 
 type Step = { name: string; state: string; txHash?: string; explorerUrl?: string }
@@ -25,11 +25,11 @@ export default function CctpPanel() {
     setError(null)
     setResult(null)
     try {
-      const res = await fetch(`${MCP_BASE}/api/arc/cctp-demo`, {
+      const res = await apiFetch('/api/arc/cctp-demo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ amountUsd: Number(amount) || 1 }),
-        signal: AbortSignal.timeout(180000),
+        timeoutMs: 180_000,
       })
       if (res.status === 401 || res.status === 403) {
         setError('Sign in with a wallet or email link to bridge real USDC (guests are read-only).')
