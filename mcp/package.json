@@ -10,10 +10,11 @@
   "scripts": {
     "build": "tsc",
     "compile": "node scripts/compile-contracts.mjs",
-    "test": "npm run build && node --test dist/auth.test.js dist/reputation.test.js dist/chains/caip.test.js dist/chains/registry.test.js dist/chains/evm/adapter.test.js dist/chains/arc-parity.test.js",
+    "test": "npm run build && node --test dist/auth.test.js dist/reputation.test.js dist/chains/caip.test.js dist/chains/registry.test.js dist/chains/evm/adapter.test.js dist/chains/arc-parity.test.js dist/asp/risk.test.js",
     "e2e": "node e2e.mjs",
     "start": "node dist/index.js",
     "start:http": "node dist/http.js",
+    "start:asp": "node dist/asp-gateway.js",
     "smoke": "node dist/smoke.js",
     "http-smoke": "node dist/http-smoke.js"
   },
@@ -25,11 +26,18 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@x402/core": "^2.18.0",
     "@x402/evm": "^2.18.0",
+    "express": "^5.2.1",
     "pg": "^8.22.0",
     "viem": "^2.52.2",
     "zod": "^3.25.76"
   },
+  "optionalDependencies": {
+    "@okxweb3/x402-core": "0.1.0",
+    "@okxweb3/x402-evm": "0.2.1",
+    "@okxweb3/x402-express": "0.1.1"
+  },
   "devDependencies": {
+    "@types/express": "^5.0.0",
     "@types/node": "^22.19.21",
     "solc": "^0.8.36",
     "typescript": "^5.9.3"
