@@ -1,0 +1,87 @@
+/**
+ * Generic viem client factory for any EVM chain descriptor. This is the extracted,
+ * parameterized version of the Arc client wiring: a fallback transport over every RPC
+ * (one flaky endpoint rolls to the next), a keyless public client for reads, and a
+ * wallet client present only when the chain's signer env var is set.
+ *
+ * Behavior is identical to the original Arc wiring when handed the Arc descriptor.
+ */
+import type { ChainDescriptor } from '../types.js'
+
+/**
+ * Resolve a chain's RPC url list: the primary may be overridden by the chain's
+ * `rpcEnvVar`, then the remaining fallbacks follow, de-duplicated and non-empty.
+ * (Mirrors the original `ARC_RPCS` computation.)
+ */
+export function resolveRpcUrls(chain: ChainDescriptor, env: NodeJS.ProcessEnv = process.env): string[] {
+  const override = chain.rpcEnvVar ? env[chain.rpcEnvVar] : undefined
+  const primary = override || chain.rpcUrls[0]
+  return [primary, ...chain.rpcUrls.slice(1)].filter((v, i, a) => v && a.indexOf(v) === i)
+}
+
+/** A fallback transport over every RPC, so one flaky endpoint rolls to the next
+ *  instead of failing the call. Each endpoint retries a couple of times on its own. */
+export async function evmTransport(chain: ChainDescriptor, env: NodeJS.ProcessEnv = process.env) {
+  const { http, fallback } = await import('viem')
+  return fallback(
+    resolveRpcUrls(chain, env).map((url) => http(url, { timeout: 8000, retryCount: 2, retryDelay: 400 })),
+    { rank: false },
+  )
+}
+
+/** Keyless public client for reads. */
+export async function evmPublicClient(chain: ChainDescriptor, env: NodeJS.ProcessEnv = process.env) {
+  const { createPublicClient } = await import('viem')
+  return createPublicClient({ transport: await evmTransport(chain, env) })
+}
+
+/** Present only when the chain's signer env var is set. Human-on-the-loop lives one
+ *  level up: nothing here broadcasts unless a caller explicitly asks to execute. */
+export async function evmWalletClient(chain: ChainDescriptor, env: NodeJS.ProcessEnv = process.env) {
+  const key = chain.signerEnvVar ? env[chain.signerEnvVar] : undefined
+  if (!key) return null
+  if (chain.evmChainId == null) throw new Error(`Chain ${chain.id} has no EVM chain id`)
+  const { createWalletClient, defineChain } = await import('viem')
+  const { privateKeyToAccount } = await import('viem/accounts')
+  const viemChain = defineChain({
+    id: chain.evmChainId,
+    name: chain.name,
+    nativeCurrency: chain.nativeCurrency,
+    rpcUrls: { default: { http: resolveRpcUrls(chain, env) } },
+  })
+  const account = privateKeyToAccount(key as `0x${string}`)
+  return { client: createWalletClient({ account, chain: viemChain, transport: await evmTransport(chain, env) }), account }
+}
+
+/** Decode a viem contract revert into the Solidity error name (e.g. "AboveAutoApprove"). */
+export async function revertReason(err: unknown): Promise<string> {
+  const { BaseError, ContractFunctionRevertedError } = await import('viem')
+  if (err instanceof BaseError) {
+    const rev = err.walk((e) => e instanceof ContractFunctionRevertedError)
+    if (rev instanceof ContractFunctionRevertedError) {
+      return rev.data?.errorName ?? rev.reason ?? rev.shortMessage
+    }
+    return err.shortMessage
+  }
+  return err instanceof Error ? err.message : String(err)
+}
+
+/** Convert a USD amount to the chain's USDC base units (Arc/EVM = 6 decimals). */
+export function usdcUnits(chain: ChainDescriptor, amountUsd: number): bigint {
+  return BigInt(Math.round(amountUsd * 10 ** chain.usdcDecimals))
+}
+
+/** Convert USDC base units back to a USD number. */
+export function fromUsdcUnits(chain: ChainDescriptor, v: bigint): number {
+  return Number(v) / 10 ** chain.usdcDecimals
+}
+
+/** Explorer link for a tx hash. */
+export function txUrl(chain: ChainDescriptor, hash: string): string {
+  return `${chain.explorer}/tx/${hash}`
+}
+
+/** Explorer link for an address. */
+export function addressUrl(chain: ChainDescriptor, address: string): string {
+  return `${chain.explorer}/address/${address}`
+}
