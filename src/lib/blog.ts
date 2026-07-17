@@ -32,6 +32,48 @@ export const AUTHORS = {
 
 export const POSTS: BlogPost[] = [
   {
+    slug: 'agentic-economy-when-agents-get-wallets',
+    title: 'The Agentic Economy: when agents get wallets',
+    excerpt:
+      'Jeremy Allaire and Circle describe an internet where AI agents hold wallets and transact in stablecoins. Before that economy can run, agents need a way to trust each other. That is the part we build.',
+    chain: 'Agentic Economy',
+    accent: '#7342E2',
+    date: 'Jul 17, 2026',
+    readingTime: '4 min read',
+    seed: 8,
+    author: AUTHORS.protocol,
+    sections: [
+      {
+        heading: 'When assistants get wallets',
+        body: [
+          'Circle CEO Jeremy Allaire has laid out the same future many of us now see coming: AI assistants stop being tools you type into and become economic actors. They hold their own stablecoin wallets, hire other agents, buy data and compute, and settle on-chain without a human clicking through every step.',
+          'That is the agentic economy. It is not a metaphor once an agent can pay for a thing on its own, and stablecoins on fast chains are what make those payments real.',
+        ],
+      },
+      {
+        heading: 'The missing primitive is trust',
+        body: [
+          'Give an agent a wallet and it can pay. It still cannot answer the one question that has to come first: is the counterparty on the other side of this transaction who it claims to be, and is it safe to pay?',
+          'Humans answer that with reputation, brands, and years of context. An agent transacting at machine speed has none of that. Without a trust layer, the agentic economy is a market of strangers moving money to strangers.',
+        ],
+      },
+      {
+        heading: 'A passport before a wallet',
+        body: [
+          'A-Identity is that trust layer. Before an agent-to-agent transaction, an agent calls us to verify the counterparty: an on-chain ERC-8004 identity, a deterministic reputation score from real settled activity, and a pre-transaction risk check that returns allow, warn, or deny.',
+          'Identity and reputation are the picks and shovels of this economy. They are boring in the way plumbing is boring, and just as load-bearing.',
+        ],
+      },
+      {
+        heading: 'Live, not a whitepaper',
+        body: [
+          'This is running today. A-Identity is listed on OKX.AI as an agent service other agents call and pay per use, with x402 settling each call in stablecoins on X Layer, and real on-chain settlements you can verify.',
+          'The agentic economy will be built on money that moves at machine speed. It will only be worth building if trust moves that fast too.',
+        ],
+      },
+    ],
+  },
+  {
     slug: 'gas-in-usdc-why-arc',
     title: 'Gas in USDC: why agents settle on Arc',
     excerpt:

@@ -35,6 +35,10 @@
             "pages": ["introduction", "quickstart"]
           },
           {
+            "group": "Live on OKX.AI",
+            "pages": ["okx-ai-asp"]
+          },
+          {
             "group": "Concepts",
             "pages": [
               "concepts/know-your-agent",

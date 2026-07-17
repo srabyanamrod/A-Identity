@@ -1,0 +1,73 @@
+---
+title: "OKX.AI ASP — Agent Trust Oracle"
+description: "A-Identity live on OKX.AI as an A2MCP ASP (Agent #6271): four pay-per-call trust tools, settled with x402 on X Layer mainnet."
+---
+
+A-Identity is **live on [OKX.AI](https://www.okx.ai/agents)** as an **A2MCP ASP** —
+Agent **#6271**, *the identity & reputation oracle for the agent economy*. Before any
+agent-to-agent transaction, an agent calls us to verify the counterparty, and pays
+per call via **[x402](/protocols/x402) on X Layer mainnet** (`eip155:196`).
+
+<Info>
+  Live endpoint: `https://a-identity-asp.onrender.com` · Public proof (real on-chain
+  settlements): [a-identity-asp.onrender.com/proof](https://a-identity-asp.onrender.com/proof)
+</Info>
+
+## The four tools
+
+| Tool | Price | Returns |
+| --- | --- | --- |
+| `verify_agent` | $0.001 | ERC-8004 on-chain identity + KYA status |
+| `reputation_score` | $0.002 | deterministic 0–1000 reputation from real settlements |
+| `risk_check` | $0.005 | pre-transaction **ALLOW / WARN / DENY** with reasons |
+| `agent_passport` | $0.01 | full passport: identity + KYA + reputation + risk |
+
+Each tool is a thin wrapper over the same live engine documented across these docs —
+ERC-8004 [identity](/protocols/erc-8004), the deterministic
+[reputation](/concepts/reputation) scorer, and [Know Your Agent](/concepts/know-your-agent) —
+so every number is real and read on-chain, not an LLM guess.
+
+## How a paid call works
+
+<Steps>
+  <Step title="Call the tool">
+    `POST https://a-identity-asp.onrender.com/tools/verify_agent` with a JSON body
+    `{ "agentId": "#849980" }`. `agentId` can be a platform id, an ERC-8004 token id
+    (`#849980`), or an owner address.
+  </Step>
+  <Step title="402 Payment Required">
+    The x402 layer answers `402` with a payment challenge on X Layer mainnet
+    (`eip155:196`), priced in USD₮0. No API key, no signup.
+  </Step>
+  <Step title="Pay and retry">
+    The caller's Agentic Wallet signs the payment; the request is replayed and the tool
+    returns its JSON result (with a self-documenting `_meta` pointing back here).
+  </Step>
+</Steps>
+
+```bash
+curl -i -X POST https://a-identity-asp.onrender.com/tools/verify_agent \
+  -H "content-type: application/json" \
+  -d '{"agentId":"#849980"}'
+# → HTTP/2 402 ... PAYMENT-REQUIRED: <base64 x402 challenge on eip155:196, USD₮0>
+```
+
+## Proof — real on-chain revenue
+
+Not a mock. **83 real x402 settlements** on X Layer mainnet — each an independently
+verifiable USD₮0 transfer to our recipient — are listed at
+[/proof](https://a-identity-asp.onrender.com/proof) (with a **live** payTo balance), and
+the exact, reproducible scoring formulas at
+[/methodology](https://a-identity-asp.onrender.com/methodology).
+
+Agents discover these paid services automatically via the
+[agent manifest](/developers/agent-manifest) (`okx_ai_asp` block).
+
+## Free discovery endpoints
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /health` | liveness + the service card (name, tools, prices) |
+| `GET /proof` | verifiable proof (HTML in a browser, JSON for agents) |
+| `GET /methodology` | the deterministic reputation + risk formulas |
+| `GET /stats` | live on-chain revenue (payTo's current USD₮0 balance) |

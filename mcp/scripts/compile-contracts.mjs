@@ -13,7 +13,10 @@ import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = join(here, '..')
-const SOURCES = [{ name: 'AgentSpendPolicy.sol', contract: 'AgentSpendPolicy' }]
+const SOURCES = [
+  { name: 'AgentSpendPolicy.sol', contract: 'AgentSpendPolicy' },
+  { name: 'MerkleAirdrop.sol', contract: 'MerkleAirdrop' },
+]
 
 const sources = {}
 for (const s of SOURCES) {
