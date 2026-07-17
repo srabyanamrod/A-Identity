@@ -18,6 +18,7 @@ import express, { type Request, type Response } from 'express'
 import { initState } from './platform.js'
 import { verifyAgent, reputationScore, riskCheck, agentPassport, type TxContext } from './asp/tools.js'
 import { applyOkxX402, type PaymentStatus } from './asp/payment.js'
+import { PROOF, METHODOLOGY } from './asp/proof.js'
 
 const SERVICE = 'A-Identity — Agent Trust Oracle'
 const PORT = Number(process.env.ASP_PORT ?? process.env.PORT ?? 4000)
@@ -60,6 +61,8 @@ function serviceCard(payment: PaymentStatus) {
       { name: 'agent_passport', method: 'POST /tools/agent_passport', price: payment.prices['POST /tools/agent_passport'], desc: 'Full agent passport (identity + reputation + KYA + risk).' },
     ],
     docs: 'https://a-identity.xyz',
+    proof: '/proof',
+    methodology: '/methodology',
   }
 }
 
@@ -78,6 +81,11 @@ async function main() {
 
   app.get('/health', health(payment))
   app.get('/', health(payment))
+
+  // Free, public, verifiable proof for the hackathon submission (real on-chain
+  // settlements, the ASP identity, the deterministic scoring methodology).
+  app.get('/proof', (_req: Request, res: Response) => res.json(PROOF))
+  app.get('/methodology', (_req: Request, res: Response) => res.json(METHODOLOGY))
 
   // The four paid tools.
   app.post('/tools/verify_agent', handle(async (req) => {

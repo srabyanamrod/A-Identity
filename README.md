@@ -22,6 +22,42 @@ per-request payments.
 
 ---
 
+## 🏆 OKX.AI Genesis Hackathon — A-Identity Trust Oracle (Agent #6271)
+
+A-Identity is **live on [OKX.AI](https://www.okx.ai/agents)** as an **A2MCP ASP** —
+*the identity & reputation oracle for the agent economy.* Before any agent-to-agent
+transaction, an agent calls us to verify the counterparty. Same live engine as the
+Arc product below; four services sold pay-per-call via **x402 on X Layer mainnet**
+(`eip155:196`).
+
+| Tool | Price | What it returns |
+|---|---|---|
+| `verify_agent` | $0.001 | ERC-8004 on-chain identity + KYA status |
+| `reputation_score` | $0.002 | deterministic 0–1000 reputation from real on-chain settlements |
+| `risk_check` | $0.005 | pre-transaction **ALLOW / WARN / DENY** with reasons |
+| `agent_passport` | $0.01 | full passport: identity + KYA + reputation + risk |
+
+**Live endpoint:** `https://a-identity-asp.onrender.com` — `POST /tools/<name>` (paid),
+or free `GET /proof`, `GET /methodology`, `GET /health`.
+
+**Real on-chain revenue (not a mock):** four real x402 settlements on X Layer mainnet,
+each independently verifiable on OKLink:
+
+| Tool | Settlement tx |
+|---|---|
+| `verify_agent` | [`0x8174a4b2…c5e7a27a`](https://www.oklink.com/x-layer/evm/tx/0x8174a4b29a3bc20d421531d2966d7091ee6d75f994a774aad5886870c5e7a27a) |
+| `reputation_score` | [`0x2ede816a…977fc9af`](https://www.oklink.com/x-layer/evm/tx/0x2ede816a12acc7b1ae62d02b610e56079d619a1feeaa6cd61370bbbb977fc9af) |
+| `risk_check` | [`0x36977927…fa8557c1`](https://www.oklink.com/x-layer/evm/tx/0x36977927f1449ea84df341df6fd6c94288f70fd9f4e6c1b57bbe7ba7fa8557c1) |
+| `agent_passport` | [`0xc7f9342b…c302a0cb`](https://www.oklink.com/x-layer/evm/tx/0xc7f9342bde496f21be725f72f5555fa685aeffcc901b54d47bd75e51c302a0cb) |
+
+**Backed by real data, not an LLM guess:** a live ERC-8004 showcase agent — Meridian
+`#849980`, reputation **539/1000**, KYA-verified. Scoring is **deterministic and
+unit-tested** (58 tests), reads on-chain live via viem, and is fully documented at
+`GET /methodology`. This is our answer to "surface your rigor" — every number is
+reproducible and every settlement is on-chain.
+
+---
+
 ## What it does
 
 An agent gets two things it does not have today:
