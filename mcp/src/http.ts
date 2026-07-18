@@ -59,6 +59,7 @@ import { nanoPaymentRequirements, settleNano, nanoResource, runNanopayDemo } fro
 import { runGatewayDemo, gatewayBalance } from './gateway.js'
 import { runCctpDemo } from './cctp.js'
 import { runAgentRun } from './autopilot.js'
+import { runTrustOracleDogfood } from './trust-oracle.js'
 import { randomBytes } from 'node:crypto'
 
 // Render/most hosts inject PORT; fall back to our own var, then the local default.
@@ -672,6 +673,21 @@ const server = http.createServer(async (req, res) => {
       amountUsd: cappedDemoUsd(body?.amountUsd, 0.05),
       budgetUsd: cappedDemoUsd(body?.budgetUsd, MAX_DEMO_USD),
     }))
+    return
+  }
+
+  // ── Trust Oracle dogfood: a buyer agent pays risk_check over x402 (Arc nanopayment)
+  //    then acts on the ALLOW/WARN/DENY verdict. The consumer side of the same Trust
+  //    Oracle we list on Circle's Agent Marketplace. Env-gated; prepared without a key.
+  if (req.method === 'POST' && url.pathname === '/api/arc/trust-oracle-demo') {
+    const body = (await readBody(req).catch(() => null)) as { agentId?: string; txContext?: { amountUsd?: number; kind?: string } } | null
+    const agentId = typeof body?.agentId === 'string' ? body.agentId.trim() : ''
+    if (!agentId) { sendJson(res, 400, { error: 'agentId required (platform id, ERC-8004 token id, or 0x owner address)' }); return }
+    if (agentId.length > 128) { sendJson(res, 400, { error: 'agentId too long (max 128 chars)' }); return }
+    const txContext = body?.txContext && typeof body.txContext === 'object'
+      ? { amountUsd: cappedDemoUsd(body.txContext.amountUsd), kind: typeof body.txContext.kind === 'string' ? body.txContext.kind.slice(0, 40) : undefined }
+      : null
+    sendJson(res, 200, await runTrustOracleDogfood({ agentId, txContext }))
     return
   }
 

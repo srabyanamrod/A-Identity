@@ -1,0 +1,71 @@
+{
+  "$schema": "https://a-identity.xyz/schemas/agent-service.json",
+  "name": "A-Identity — Agent Trust Oracle",
+  "slug": "a-identity-trust-oracle",
+  "positioning": "The identity & reputation oracle for the agent economy.",
+  "description": "Before one AI agent pays another, it calls A-Identity to verify the counterparty. Four pay-per-call x402 tools over a live on-chain engine: ERC-8004 identity + KYA, a deterministic 0–1000 reputation score from real on-chain settlements, and a pre-transaction ALLOW / WARN / DENY risk verdict. Every number is reproducible and every settlement is on-chain.",
+  "type": "x402",
+  "url": "https://a-identity-asp.onrender.com",
+  "provider": {
+    "name": "A-Identity",
+    "url": "https://a-identity.xyz",
+    "repo": "https://github.com/srabyanamrod/A-Identity",
+    "identity": {
+      "standard": "ERC-8004",
+      "showcaseAgentId": "849980",
+      "showcaseAgentName": "Meridian",
+      "chain": "arc-testnet",
+      "alsoListedOn": { "marketplace": "OKX.AI", "agentId": "6271" }
+    }
+  },
+  "payment": {
+    "protocol": "x402",
+    "asset": "USDC",
+    "networks": [
+      { "caip2": "eip155:196", "name": "OKX X Layer", "facilitator": "OKX", "status": "live" },
+      { "caip2": "eip155:5042002", "name": "Arc Testnet", "facilitator": "Circle Gateway", "status": "live", "note": "gasless nanopayments (EIP-3009 + Gateway batch)" }
+    ]
+  },
+  "tools": [
+    {
+      "name": "verify_agent",
+      "method": "POST",
+      "endpoint": "/tools/verify_agent",
+      "price": "$0.001",
+      "description": "Verify an AI agent's identity: ERC-8004 on-chain registration + KYA (wallet-control) status.",
+      "input": { "agentId": "string — platform id, ERC-8004 token id (e.g. \"#849980\"), or owner 0x address" }
+    },
+    {
+      "name": "reputation_score",
+      "method": "POST",
+      "endpoint": "/tools/reputation_score",
+      "price": "$0.002",
+      "description": "Deterministic 0–1000 reputation score computed from real on-chain settlements, KYA, and tenure.",
+      "input": { "agentId": "string" }
+    },
+    {
+      "name": "risk_check",
+      "method": "POST",
+      "endpoint": "/tools/risk_check",
+      "price": "$0.005",
+      "description": "Pre-transaction counterparty risk: a single ALLOW / WARN / DENY decision with reasons, before you pay.",
+      "input": { "agentId": "string", "txContext": "optional { amountUsd?, kind? }" }
+    },
+    {
+      "name": "agent_passport",
+      "method": "POST",
+      "endpoint": "/tools/agent_passport",
+      "price": "$0.01",
+      "description": "Full agent passport: identity + KYA + reputation + risk, in one call.",
+      "input": { "agentId": "string" }
+    }
+  ],
+  "discovery": {
+    "manifest": "/.well-known/agent.json",
+    "health": "/health",
+    "proof": "/proof",
+    "methodology": "/methodology"
+  },
+  "categories": ["identity", "reputation", "risk", "trust", "kyc-kya"],
+  "tags": ["ERC-8004", "x402", "A2MCP", "agent-trust", "risk-oracle"]
+}

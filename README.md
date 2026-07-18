@@ -174,6 +174,21 @@ blind prepay, trust-minimized agent-to-agent commerce.
 Try it: `cd mcp && node --env-file=.env scripts/test-refund.mjs` runs the full dispute lifecycle
 (create → fund → submit → reject) on real Arc testnet and proves the client is refunded on-chain.
 
+### An agent pays an agent for trust — Trust Oracle over x402
+
+The same **Trust Oracle** we sell on OKX.AI (and list on **Circle's Agent Marketplace** — manifest
+in `mcp/marketplace/`, served live at
+[`/.well-known/agent.json`](https://a-identity-asp.onrender.com/.well-known/agent.json)) is
+**dogfooded by our own agents**: before it pays a counterparty, a buyer agent **buys a `risk_check`
+over x402** — a gasless Arc-testnet nanopayment via Circle Gateway — and acts on the returned
+**ALLOW / WARN / DENY** verdict. A live "agent pays an agent for trust" loop, on real Arc.
+
+- **Backend:** `mcp/src/trust-oracle.ts` (`runTrustOracleDogfood`) · `POST /api/arc/trust-oracle-demo`.
+- **Frontend:** the Settlements → "Trust Oracle" panel: enter a counterparty, pay $0.005, get the verdict.
+
+Try it: `cd mcp && node --env-file=.env scripts/test-dogfood.mjs` — a buyer agent pays $0.005 over
+x402 on real Arc testnet and gets a DENY on a low-reputation counterparty before it can transact.
+
 ### Know Your Agent (KYA) — a real check, not a stamp
 
 An agent is no longer marked `verified` for free. It must **prove control of its wallet** by

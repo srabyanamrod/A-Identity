@@ -15,6 +15,9 @@
  *   POST /tools/agent_passport    $0.01  — full agent passport
  */
 import express, { type Request, type Response } from 'express'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 import { initState } from './platform.js'
 import { verifyAgent, reputationScore, riskCheck, agentPassport, type TxContext } from './asp/tools.js'
 import { applyOkxX402, type PaymentStatus } from './asp/payment.js'
@@ -24,6 +27,20 @@ import { getLiveStats } from './asp/stats.js'
 
 const SERVICE = 'A-Identity — Agent Trust Oracle'
 const PORT = Number(process.env.ASP_PORT ?? process.env.PORT ?? 4000)
+
+/** The Circle Agent Marketplace service manifest — the descriptor an agent (or the
+ *  `circle services inspect` CLI) reads to discover this service. Loaded once from the
+ *  committed JSON (single source of truth; ../marketplace/ ships with the mcp/ deploy).
+ *  A missing file degrades to a minimal card so discovery never 500s. */
+function loadManifest(): Record<string, unknown> {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url)) // mcp/dist
+    return JSON.parse(readFileSync(join(here, '..', 'marketplace', 'circle-agent-marketplace.json'), 'utf8'))
+  } catch {
+    return { name: SERVICE, type: 'x402', url: 'https://a-identity-asp.onrender.com' }
+  }
+}
+const MANIFEST = loadManifest()
 
 /** Pull a required string `agentId` from a request body, or explain what's missing. */
 function requireAgentId(req: Request): { agentId: string } | { error: string } {
@@ -98,6 +115,10 @@ async function main() {
   })
   app.get('/proof.json', (_req: Request, res: Response) => res.json(PROOF))
   app.get('/methodology', (_req: Request, res: Response) => res.json(METHODOLOGY))
+  // Circle Agent Marketplace discovery: the inspectable service manifest. Free, public —
+  // this is what `circle services inspect "<url>"` (and agents.circle.com) read to list us.
+  app.get('/.well-known/agent.json', (_req: Request, res: Response) => res.json(MANIFEST))
+  app.get('/manifest', (_req: Request, res: Response) => res.json(MANIFEST))
   // Live on-chain stats (payTo's current USD₮0), so the /proof page reads "live".
   app.get('/stats', async (_req: Request, res: Response) => res.json(await getLiveStats()))
 

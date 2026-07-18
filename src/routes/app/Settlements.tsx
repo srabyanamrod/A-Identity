@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ArrowUpRight, CheckCircle2, Clock, ExternalLink, Link2, Receipt, Send, ShieldQuestion, Wallet } from 'lucide-react'
 import { authHeaders } from '../../store/auth'
 import AutopilotPanel from '../../components/app/AutopilotPanel'
+import TrustOraclePanel from '../../components/app/TrustOraclePanel'
 import X402Panel from '../../components/app/X402Panel'
 import NanopayPanel from '../../components/app/NanopayPanel'
 import EscrowPanel from '../../components/app/EscrowPanel'
@@ -357,6 +358,7 @@ export default function Settlements() {
       )}
 
       <AutopilotPanel />
+      <TrustOraclePanel />
       <X402Panel />
       <NanopayPanel />
       <EscrowPanel />
