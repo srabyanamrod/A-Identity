@@ -138,26 +138,35 @@ const txUrl = (h: string) => `${ARC_EXPLORER}/tx/${h}`
 export async function deployAirdrop(
   entries: AirdropEntry[],
   owner: `0x${string}`,
+  claimDeadlineSec?: number,
   env: NodeJS.ProcessEnv = process.env,
 ) {
   if (!/^0x[0-9a-fA-F]{40}$/.test(owner)) {
     throw new Error('deployAirdrop: owner must be an address — pass the 2/2 Safe treasury, not the deployer key')
   }
+  // Sweep is disabled until this time, so recipients get a guaranteed claim window.
+  // Default: 30 days out.
+  const deadline = BigInt(
+    Number.isFinite(claimDeadlineSec) && (claimDeadlineSec as number) > 0
+      ? Math.floor(claimDeadlineSec as number)
+      : Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+  )
   const built = buildAirdrop(entries)
   const prepared = {
     token: CONTRACTS.usdc,
     merkleRoot: built.root,
     owner,
+    claimDeadline: deadline.toString(),
     recipients: built.recipients.length,
     totalUsd: built.totalUsd,
-    constructorArgs: [CONTRACTS.usdc, built.root, owner] as const,
+    constructorArgs: [CONTRACTS.usdc, built.root, owner, deadline.toString()] as const,
   }
   const signer = signerFor(env)
   if (!signer) return { executed: false as const, reason: NO_KEY, ...prepared }
   const hash = await signer.client.deployContract({
     abi: MerkleAirdropAbi,
     bytecode: MerkleAirdropBytecode as Hex,
-    args: [CONTRACTS.usdc as Hex, built.root, owner],
+    args: [CONTRACTS.usdc as Hex, built.root, owner, deadline],
   })
   const receipt = await pub().waitForTransactionReceipt({ hash })
   return { executed: true as const, airdrop: receipt.contractAddress as string, txHash: hash, explorerUrl: txUrl(hash), ...prepared }
@@ -193,10 +202,11 @@ export async function claimAirdrop(
 /** Read the deployed airdrop's live state (root, owner, token, funded USDC, per-index claimed). */
 export async function readAirdrop(airdrop: `0x${string}`, indices: number[] = []) {
   const client = pub()
-  const [root, owner, token] = await Promise.all([
+  const [root, owner, token, deadline] = await Promise.all([
     client.readContract({ address: airdrop, abi: MerkleAirdropAbi, functionName: 'merkleRoot' }) as Promise<Hex>,
     client.readContract({ address: airdrop, abi: MerkleAirdropAbi, functionName: 'owner' }) as Promise<Hex>,
     client.readContract({ address: airdrop, abi: MerkleAirdropAbi, functionName: 'token' }) as Promise<Hex>,
+    client.readContract({ address: airdrop, abi: MerkleAirdropAbi, functionName: 'claimDeadline' }) as Promise<bigint>,
   ])
   const claimed = await Promise.all(
     indices.map(async (i) => ({
@@ -204,5 +214,5 @@ export async function readAirdrop(airdrop: `0x${string}`, indices: number[] = []
       claimed: (await client.readContract({ address: airdrop, abi: MerkleAirdropAbi, functionName: 'isClaimed', args: [BigInt(i)] })) as boolean,
     })),
   )
-  return { airdrop, merkleRoot: root, owner, token, claimed }
+  return { airdrop, merkleRoot: root, owner, token, claimDeadline: deadline.toString(), claimed }
 }

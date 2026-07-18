@@ -138,18 +138,22 @@ export class RpcIdentityProvider implements IdentityProvider {
         }) as Promise<string>,
       ])
 
-      // Fetch registration JSON from tokenURI
+      // Fetch registration JSON from tokenURI (display metadata only).
       let domain = ''
       let registeredAt = new Date().toISOString().slice(0, 10)
-      let valid = true
-      if (tokenUri.startsWith('http')) {
+      // `valid` is NOT self-attestable: the tokenURI JSON is hosted by the agent itself,
+      // so reading `valid` from it lets any agent mark itself verified (and an unreachable
+      // URI would default it to `true`). Authoritative verification comes from the on-chain
+      // ERC-8004 ValidationRegistry (readValidation), surfaced separately by callers.
+      const valid = false
+      if (isSafePublicHttpUrl(tokenUri)) {
         try {
-          const reg = await fetch(tokenUri, { signal: AbortSignal.timeout(4000) })
+          // redirect:'error' so a public URL can't 30x us into an internal target.
+          const reg = await fetch(tokenUri, { signal: AbortSignal.timeout(4000), redirect: 'error' })
           if (reg.ok) {
             const data = (await reg.json()) as Partial<AgentIdentity>
             domain = data.domain ?? ''
             registeredAt = data.registeredAt ?? registeredAt
-            valid = data.valid ?? true
           }
         } catch {
           // tokenURI not reachable - use on-chain data only
@@ -217,6 +221,34 @@ export class RpcIdentityProvider implements IdentityProvider {
 function toAddress(val: string): `0x${string}` {
   if (!/^0x[0-9a-fA-F]{40}$/.test(val)) throw new Error(`Invalid address: ${val}`)
   return val as `0x${string}`
+}
+
+/**
+ * SSRF guard for the agent-controlled tokenURI. The URI is set by whoever registered the
+ * agent, and we fetch it server-side — so it must not be allowed to point at loopback, a
+ * private range, or cloud metadata (169.254.169.254). Best-effort literal-host filtering
+ * (no DNS): blocks the obvious internal targets; callers also fetch with redirect:'error'.
+ */
+export function isSafePublicHttpUrl(raw: string): boolean {
+  let u: URL
+  try { u = new URL(raw) } catch { return false }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false
+  // Strip IPv6 brackets so `[::1]` normalizes to `::1` for the checks below.
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) return false
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (m) {
+    const a = Number(m[1]), b = Number(m[2])
+    if (a === 0 || a === 10 || a === 127) return false
+    if (a === 169 && b === 254) return false // link-local incl. the metadata endpoint
+    if (a === 192 && b === 168) return false
+    if (a === 172 && b >= 16 && b <= 31) return false
+    if (a === 100 && b >= 64 && b <= 127) return false // CGNAT
+  }
+  if (host.includes(':')) {
+    if (host === '::1' || host.startsWith('fe80') || host.startsWith('fc') || host.startsWith('fd')) return false
+  }
+  return true
 }
 
 export function createIdentityProvider(env: NodeJS.ProcessEnv = process.env): IdentityProvider {

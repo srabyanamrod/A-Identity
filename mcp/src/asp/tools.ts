@@ -98,10 +98,14 @@ async function gather(agentId: string): Promise<Bundle> {
   else if (validation && Number((validation as { kyaCount?: number }).kyaCount ?? 0) > 0) kyaStatus = 'verified'
   const kyaVerified = kyaStatus === 'verified'
 
-  // Tenure from the richest available timestamp.
-  const createdAt = platform?.createdAt ?? identity?.registeredAt ?? null
-  const tenureDays = createdAt
-    ? Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / DAY_MS))
+  // Tenure only from a timestamp WE can vouch for (platform-tracked creation). We do NOT
+  // trust `identity.registeredAt`, which is read from the agent's own tokenURI JSON — a
+  // counterparty could self-attest an ancient date to inflate tenure (worth up to 160
+  // reputation points) and flip a DENY into a WARN. Unknown tenure → 0, not self-reported.
+  const createdAt = platform?.createdAt ?? null
+  const createdMs = createdAt ? new Date(createdAt).getTime() : NaN
+  const tenureDays = Number.isFinite(createdMs)
+    ? Math.max(0, Math.floor((Date.now() - createdMs) / DAY_MS))
     : 0
 
   // Reputation: platform scorer when we have platform state (real settlement history);

@@ -26,7 +26,6 @@ import {
   assignWallet,
   createAgent,
   createInstruction,
-  createWallet,
   initState,
   recordWallet,
   executeInstruction,
@@ -52,7 +51,7 @@ import { issueToken, verifyToken, isVerified } from './auth.js'
 import { magicEnabled, sendMagicLink, verifyMagicToken } from './magic.js'
 import {
   x402PayTo, paymentRequirements, verifyPayment, premiumResource,
-  issueX402Nonce, x402NonceValid, consumeX402Nonce,
+  issueX402Nonce, x402NonceValid, consumeX402Nonce, verifyPayerBinding,
 } from './x402.js'
 import { nanoPaymentRequirements, settleNano, nanoResource, runNanopayDemo } from './nanopay.js'
 import { runGatewayDemo, gatewayBalance } from './gateway.js'
@@ -127,16 +126,40 @@ function rateBudget(method: string, pathname: string): { bucket: string; max: nu
   return null
 }
 
+// Number of trusted reverse proxies in front of us (Render/Vercel terminate as 1 hop).
+// The real client IP is the XFF entry `TRUSTED_PROXY_COUNT` from the END — NOT the first
+// entry, which is fully attacker-controlled (a spoofed X-Forwarded-For would otherwise give
+// each request a fresh rate-limit bucket and defeat the limiter entirely).
+const TRUSTED_PROXY_COUNT = Math.max(1, Number(process.env.TRUSTED_PROXY_COUNT ?? 1))
+
 function clientIpOf(req: http.IncomingMessage): string {
   const xff = req.headers['x-forwarded-for']
-  const fromXff = typeof xff === 'string' ? xff.split(',')[0].trim() : ''
-  return fromXff || req.socket.remoteAddress || 'unknown'
+  if (typeof xff === 'string' && xff.length > 0) {
+    const parts = xff.split(',').map((s) => s.trim()).filter(Boolean)
+    // Take the hop just before our trusted proxy layer; clamp if fewer entries than expected.
+    const idx = Math.max(0, parts.length - TRUSTED_PROXY_COUNT)
+    if (parts[idx]) return parts[idx]
+  }
+  return req.socket.remoteAddress || 'unknown'
 }
+
+/** Hard cap on a request body. Every endpoint here takes a small JSON object; a bigger
+ *  body is abuse (memory spike + it would balloon the single persisted state blob). */
+const MAX_BODY_BYTES = 256 * 1024
 
 function readBody(req: http.IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
-    req.on('data', (c) => chunks.push(c as Buffer))
+    let size = 0
+    req.on('data', (c) => {
+      size += (c as Buffer).length
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error('request body too large'))
+        req.destroy()
+        return
+      }
+      chunks.push(c as Buffer)
+    })
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString('utf8')
       if (!raw) return resolve(undefined)
@@ -144,6 +167,23 @@ function readBody(req: http.IncomingMessage): Promise<unknown> {
     })
     req.on('error', reject)
   })
+}
+
+// ── small input validators (finite, bounded — no NaN/Infinity/negative slips through) ──
+/** A finite, non-negative number no larger than `max` (USD amounts on a testnet demo). */
+function validAmount(v: unknown, max = 1_000_000): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max
+}
+/** Clamp a client-supplied USD amount into [0, max]; non-numbers → `fallback`. */
+function clampUsd(v: unknown, max: number, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(0, v)) : fallback
+}
+/** The on-chain demo endpoints spend the shared server signer. Cap client-chosen amounts
+ *  so an internet caller can't force a large deposit/transfer from the house key. Returns
+ *  `undefined` for a missing/invalid value so the runner falls back to its own small default. */
+const MAX_DEMO_USD = 5
+function cappedDemoUsd(v: unknown, max = MAX_DEMO_USD): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(0, v)) : undefined
 }
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown) {
@@ -178,7 +218,12 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', resolveCorsOrigin(reqOrigin))
   if (ALLOWED_ORIGINS.length > 0) res.setHeader('Vary', 'Origin')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Payment, mcp-session-id, mcp-protocol-version')
+  // Includes the x402 payment headers (X-Payment*, PAYMENT-SIGNATURE); without them a
+  // cross-origin caller's redemption preflight is blocked and shows as "Failed to fetch".
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Payment, X-Payment-Nonce, X-Payment-Payer, X-Payment-Sig, PAYMENT-SIGNATURE, mcp-session-id, mcp-protocol-version',
+  )
 
   if (req.method === 'OPTIONS') { res.writeHead(204).end(); return }
 
@@ -379,7 +424,23 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 402, { ...paymentRequirements(payTo, issueX402Nonce()), verifyError: 'missing or stale payment nonce; re-quote to get a fresh one' })
       return
     }
-    const verified = await verifyPayment(proof, payTo)
+    // Bind the redemption to the actual PAYER. The client proves control of the paying
+    // wallet by signing the (nonce, payer) challenge; we then require the on-chain payment
+    // to originate from that same wallet. This is what stops a front-runner who scraped the
+    // tx hash off the public chain (or any unrelated transfer to payTo) from redeeming a
+    // payment they did not make.
+    const payer = typeof req.headers['x-payment-payer'] === 'string' ? req.headers['x-payment-payer'] : undefined
+    const paySig = typeof req.headers['x-payment-sig'] === 'string' ? req.headers['x-payment-sig'] : undefined
+    if (!payer || !/^0x[0-9a-fA-F]{40}$/.test(payer) || !paySig) {
+      // Keep the same nonce live so the client can sign and retry without re-quoting.
+      sendJson(res, 402, { ...paymentRequirements(payTo, nonce), verifyError: 'payer proof required: sign the x402 authorization with the paying wallet (X-Payment-Payer + X-Payment-Sig)' })
+      return
+    }
+    if (!(await verifyPayerBinding(nonce!, payer, paySig))) {
+      sendJson(res, 402, { ...paymentRequirements(payTo, nonce), verifyError: 'payer signature does not match the paying wallet' })
+      return
+    }
+    const verified = await verifyPayment(proof, payTo, payer)
     if (!verified.ok) {
       // Keep the same nonce live (echo it back) so the client can retry while the
       // payment is still confirming; only a real failure/expiry forces a re-quote.
@@ -457,21 +518,21 @@ const server = http.createServer(async (req, res) => {
   // ── Circle Gateway: one-click deposit + gasless cross-chain transfer (Arc→Base) ──
   if (req.method === 'POST' && url.pathname === '/api/arc/gateway-demo') {
     const body = (await readBody(req).catch(() => null)) as { amountUsd?: number } | null
-    sendJson(res, 200, await runGatewayDemo({ amountUsd: body?.amountUsd }))
+    sendJson(res, 200, await runGatewayDemo({ amountUsd: cappedDemoUsd(body?.amountUsd) }))
     return
   }
 
   // ── Circle Nanopayments: one-click gasless, Gateway-batched USDC nanopayment ──
   if (req.method === 'POST' && url.pathname === '/api/arc/nanopay-demo') {
     const body = (await readBody(req).catch(() => null)) as { amountUsd?: number } | null
-    sendJson(res, 200, await runNanopayDemo({ amountUsd: body?.amountUsd }))
+    sendJson(res, 200, await runNanopayDemo({ amountUsd: cappedDemoUsd(body?.amountUsd) }))
     return
   }
 
   // ── Circle CCTP: one-click native USDC bridge (burn-and-mint) Arc → Base Sepolia ──
   if (req.method === 'POST' && url.pathname === '/api/arc/cctp-demo') {
     const body = (await readBody(req).catch(() => null)) as { amountUsd?: number } | null
-    sendJson(res, 200, await runCctpDemo({ amountUsd: body?.amountUsd }))
+    sendJson(res, 200, await runCctpDemo({ amountUsd: cappedDemoUsd(body?.amountUsd) }))
     return
   }
 
@@ -479,7 +540,12 @@ const server = http.createServer(async (req, res) => {
   //    human-set budget, then stops itself; a protocol fee is routed to the treasury.
   if (req.method === 'POST' && url.pathname === '/api/arc/agent-run') {
     const body = (await readBody(req).catch(() => null)) as { maxCalls?: number; amountUsd?: number; budgetUsd?: number } | null
-    sendJson(res, 200, await runAgentRun({ maxCalls: body?.maxCalls, amountUsd: body?.amountUsd, budgetUsd: body?.budgetUsd }))
+    // Cap the client-chosen amounts: this run deposits/spends the shared server signer.
+    sendJson(res, 200, await runAgentRun({
+      maxCalls: body?.maxCalls,
+      amountUsd: cappedDemoUsd(body?.amountUsd, 0.05),
+      budgetUsd: cappedDemoUsd(body?.budgetUsd, MAX_DEMO_USD),
+    }))
     return
   }
 
@@ -493,20 +559,22 @@ const server = http.createServer(async (req, res) => {
   // ── Platform: wallets ─────────────────────────────────────────────────────────
   if (req.method === 'POST' && url.pathname === '/api/wallets') {
     const body = (await readBody(req).catch(() => null)) as { address?: string } | null
-    // Preferred: a client-generated address (server never sees the key).
-    if (body?.address && /^0x[0-9a-fA-F]{40}$/.test(body.address)) {
-      sendJson(res, 201, recordWallet(body.address))
+    // No-custody by construction: the client generates the keypair in the browser and only
+    // ever sends the public address. The server never generates or returns a private key
+    // (the old server-side fallback returned a raw key over HTTP — removed).
+    if (!body?.address || !/^0x[0-9a-fA-F]{40}$/.test(body.address)) {
+      sendJson(res, 400, { error: 'a client-generated wallet address (0x…) is required; the server never creates or holds private keys' })
       return
     }
-    // Legacy fallback: server-side generation (key returned once, not stored).
-    sendJson(res, 201, await createWallet())
+    sendJson(res, 201, recordWallet(body.address))
     return
   }
   if (req.method === 'POST' && url.pathname === '/api/wallets/assign') {
     const body = (await readBody(req).catch(() => null)) as { address?: string; agentId?: string } | null
     if (!body?.address || !body?.agentId) { sendJson(res, 400, { error: 'address and agentId required' }); return }
-    const w = assignWallet(body.address, body.agentId)
-    sendJson(res, w ? 200 : 404, w ?? { error: 'wallet or agent not found' })
+    const w = assignWallet(body.address, body.agentId, callerId)
+    if ('error' in w) { sendJson(res, errStatus(w.error), w); return }
+    sendJson(res, 200, w)
     return
   }
   if (req.method === 'GET' && url.pathname === '/api/wallet-balance') {
@@ -552,7 +620,8 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/agents/vault') {
     const body = (await readBody(req).catch(() => null)) as { agentId?: string; fundUsd?: number; ownerAddress?: string } | null
     if (!body?.agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
-    const r = await provisionAgentVault(body.agentId, { fundUsd: body.fundUsd, caller: callerId, ownerAddress: body.ownerAddress })
+    // fundUsd is deposited from the shared server signer — cap it like the other demo spends.
+    const r = await provisionAgentVault(body.agentId, { fundUsd: cappedDemoUsd(body.fundUsd), caller: callerId, ownerAddress: body.ownerAddress })
     if ('error' in r && typeof r.error === 'string') { sendJson(res, errStatus(r.error), r); return }
     sendJson(res, 200, r)
     return
@@ -669,8 +738,16 @@ const server = http.createServer(async (req, res) => {
       agentId?: string; type?: InstructionType; amountUsd?: number
       count?: number; payee?: string; memo?: string
     } | null
-    if (!body?.agentId || !body?.type || typeof body.amountUsd !== 'number' || !body?.payee) {
+    if (!body?.agentId || !body?.type || !body?.payee) {
       sendJson(res, 400, { error: 'agentId, type, amountUsd, payee required' }); return
+    }
+    if (!validAmount(body.amountUsd)) {
+      // Reject negative/NaN/Infinity here: a negative amount would otherwise subtract from
+      // the agent's daily spend, letting an owner rewind their own safety cap.
+      sendJson(res, 400, { error: 'amountUsd must be a finite number between 0 and 1000000' }); return
+    }
+    if (body.count !== undefined && !(Number.isFinite(body.count) && body.count! >= 1 && body.count! <= 1000)) {
+      sendJson(res, 400, { error: 'count must be an integer between 1 and 1000' }); return
     }
     const ix = createInstruction({ ...body, caller: callerId } as never)
     sendJson(res, 'error' in ix ? errStatus(ix.error) : 201, ix)

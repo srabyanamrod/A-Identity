@@ -64,38 +64,44 @@ export default function Wallet() {
 
   const agent = agents.find((a) => a.id === agentId)
 
-  const refresh = useCallback(async (a: Agent | undefined) => {
+  // `isActive` guards every setState so a late response for a previously-selected agent
+  // can't clobber the state of the one now shown (a fast agent switch would otherwise
+  // attribute the wrong balance/txs to the wrong agent).
+  const refresh = useCallback(async (a: Agent | undefined, isActive: () => boolean = () => true) => {
     if (!a) return
     // Real recent payments for this agent.
     apiFetch(`/api/instructions?agentId=${a.id}`)
       .then((r) => r.json())
-      .then((d: { instructions: Instruction[] }) => setTxs([...d.instructions].reverse().slice(0, 8)))
-      .catch(() => setTxs([]))
+      .then((d: { instructions: Instruction[] }) => { if (isActive()) setTxs([...d.instructions].reverse().slice(0, 8)) })
+      .catch(() => { if (isActive()) setTxs([]) })
     // Live multi-asset balances (USDC / EURC / USYC) read from Arc, via the treasury
     // read (which returns all three), so the wallet shows every token it holds — not
     // only the native USDC gas balance. Best-effort: the hero USDC below is separate.
     apiFetch(`/api/agents/treasury?agentId=${a.id}`)
       .then((r) => readJson<{ balances?: AssetBalances; error?: string }>(r))
-      .then((d) => setAssets(d.balances ?? null))
-      .catch(() => setAssets(null))
+      .then((d) => { if (isActive()) setAssets(d.balances ?? null) })
+      .catch(() => { if (isActive()) setAssets(null) })
     // Live on-chain USDC balance, if the agent has a wallet.
     if (a.walletAddress) {
-      setLoadingBal(true)
+      if (isActive()) setLoadingBal(true)
       try {
         const r = await apiFetch(`/api/wallet-balance?address=${a.walletAddress}`)
-        setBalance(await readJson<Balance>(r))
+        const b = await readJson<Balance>(r)
+        if (isActive()) setBalance(b)
       } catch {
-        setBalance(null)
+        if (isActive()) setBalance(null)
       } finally {
-        setLoadingBal(false)
+        if (isActive()) setLoadingBal(false)
       }
-    } else {
+    } else if (isActive()) {
       setBalance(null)
     }
   }, [])
 
   useEffect(() => {
-    if (agent) refresh(agent)
+    let active = true
+    if (agent) refresh(agent, () => active)
+    return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId, agent?.walletAddress])
 

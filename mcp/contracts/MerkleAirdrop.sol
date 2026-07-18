@@ -27,6 +27,9 @@ contract MerkleAirdrop {
     IERC20 public immutable token;
     /// @notice The fixed Merkle root committing to every (index, account, amount) leaf.
     bytes32 public immutable merkleRoot;
+    /// @notice Unix time before which `sweep` is disabled. Recipients are guaranteed a
+    /// window to claim; the owner cannot rug the pool out from under them until it passes.
+    uint256 public immutable claimDeadline;
 
     /// @dev Packed bitmap of claimed indices (256 claims per storage word).
     mapping(uint256 => uint256) private claimedBitMap;
@@ -39,15 +42,19 @@ contract MerkleAirdrop {
     error NotOwner();
     error TransferFailed();
     error ZeroOwner();
+    error SweepBeforeDeadline();
 
     /// @param _owner The treasury that owns sweep — MUST be the shared 2/2 Gnosis Safe, NOT
     /// the deployer key. Passing an explicit owner keeps the funded pool under 2/2 control
     /// instead of the single hot key that broadcast the deploy.
-    constructor(address _token, bytes32 _merkleRoot, address _owner) {
+    /// @param _claimDeadline Unix time before which sweep is disabled, so recipients get a
+    /// guaranteed claim window (the owner can't empty the pool early).
+    constructor(address _token, bytes32 _merkleRoot, address _owner, uint256 _claimDeadline) {
         if (_owner == address(0)) revert ZeroOwner();
         owner = _owner;
         token = IERC20(_token);
         merkleRoot = _merkleRoot;
+        claimDeadline = _claimDeadline;
     }
 
     /// @notice Whether the allocation at `index` has already been claimed.
@@ -89,9 +96,11 @@ contract MerkleAirdrop {
         emit Claimed(index, account, amount);
     }
 
-    /// @notice Owner sweeps the remaining (unclaimed) USDC to `to` after the campaign.
+    /// @notice Owner sweeps the remaining (unclaimed) USDC to `to` AFTER the claim deadline.
+    /// Disabled until `claimDeadline` so the owner cannot rug recipients mid-campaign.
     function sweep(address to) external {
         if (msg.sender != owner) revert NotOwner();
+        if (block.timestamp < claimDeadline) revert SweepBeforeDeadline();
         uint256 bal = token.balanceOf(address(this));
         if (!token.transfer(to, bal)) revert TransferFailed();
         emit Swept(to, bal);

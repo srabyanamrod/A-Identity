@@ -58,20 +58,65 @@ export function consumeX402Nonce(nonce: string): void {
   issuedNonces.delete(nonce)
 }
 
+/**
+ * The message the PAYER signs to bind a redemption to themselves. Without this, redemption
+ * is bound only to a server nonce anyone can mint via a bare GET — so a front-runner who
+ * reads the payment tx hash off the public chain (or any unrelated transfer to payTo) could
+ * redeem someone else's payment. Requiring a signature over (nonce, payer) that must match
+ * the on-chain `from` of the payment closes that: only the wallet that actually paid can
+ * present a valid signature, and the on-chain sender must equal that same wallet.
+ */
+export function x402BindingMessage(nonce: string, payer: string, resource: string = X402_RESOURCE): string {
+  return `A-Identity x402 payment authorization\nResource: ${resource}\nNonce: ${nonce}\nPayer: ${payer.toLowerCase()}`
+}
+
+/** True if `signature` over `x402BindingMessage(nonce, payer)` was produced by `payer`. */
+export async function verifyPayerBinding(
+  nonce: string,
+  payer: string,
+  signature: string,
+): Promise<boolean> {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(payer) || !/^0x[0-9a-fA-F]+$/.test(signature)) return false
+  try {
+    const { verifyMessage } = await import('viem')
+    return await verifyMessage({
+      address: payer.toLowerCase() as `0x${string}`,
+      message: x402BindingMessage(nonce, payer),
+      signature: signature as `0x${string}`,
+    })
+  } catch {
+    return false
+  }
+}
+
 /** Spent payment tx hashes — a payment can unlock the resource exactly once. Backed
  *  by durable storage (Postgres/JSON) so a restart can't reset replay protection. */
 const spent = new Set<string>()
 
-/** Hydrate the in-memory set from durable storage exactly once, before the first check. */
+/** Hydrate the in-memory set from durable storage before the first check. A FAILED load is
+ *  not cached — we reset so the next verify retries, and we rethrow so this verify fails
+ *  CLOSED (a payment isn't accepted while the spent set is unknown, which would otherwise
+ *  let a pre-restart payment be replayed). */
 let hydrated: Promise<void> | null = null
 function ensureHydrated(): Promise<void> {
   if (!hydrated) {
-    hydrated = loadSpentPayments()
-      .then((hashes) => hashes.forEach((h) => spent.add(h.toLowerCase())))
-      .catch((e) => console.error('[x402] hydrate spent set failed:', e instanceof Error ? e.message : e))
+    hydrated = (async () => {
+      try {
+        const hashes = await loadSpentPayments()
+        hashes.forEach((h) => spent.add(h.toLowerCase()))
+      } catch (e) {
+        console.error('[x402] hydrate spent set failed:', e instanceof Error ? e.message : e)
+        hydrated = null // don't cache the failure — retry on the next call
+        throw e
+      }
+    })()
   }
   return hydrated
 }
+
+/** Tx hashes currently mid-verification, so N concurrent redemptions of the SAME payment
+ *  can't all pass the `spent.has` check before any of them records it (TOCTOU). */
+const verifying = new Set<string>()
 
 const TRANSFER_ABI = [
   {
@@ -123,31 +168,52 @@ export function paymentRequirements(payTo: string, nonce?: string) {
   }
 }
 
-/** Verify a payment tx: a real USDC Transfer to payTo of >= PRICE, not already spent. */
+/**
+ * Verify a payment tx: a real USDC Transfer to payTo of >= PRICE, not already spent.
+ * When `from` is given (the payer we've cryptographically bound the redemption to), the
+ * matching Transfer must also originate from that address — so a stranger can't redeem a
+ * payment someone else made.
+ */
 export async function verifyPayment(
   txHash: string,
   payTo: string,
+  from?: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) return { ok: false, reason: 'invalid tx hash' }
-  await ensureHydrated()
   const key = txHash.toLowerCase()
-  if (spent.has(key)) return { ok: false, reason: 'payment already used' }
   try {
-    const client = await publicClient()
-    const receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` })
-    if (receipt.status !== 'success') return { ok: false, reason: 'payment tx did not succeed' }
-    const { parseEventLogs } = await import('viem')
-    const transfers = parseEventLogs({ abi: TRANSFER_ABI, eventName: 'Transfer', logs: receipt.logs })
-    const paid = transfers.find(
-      (l) =>
-        (l.address as string).toLowerCase() === CONTRACTS.usdc.toLowerCase() &&
-        (l.args as { to: string }).to.toLowerCase() === payTo &&
-        (l.args as { value: bigint }).value >= PRICE,
-    )
-    if (!paid) return { ok: false, reason: `no USDC payment of >= ${PRICE} to ${payTo} in this tx` }
-    spent.add(key)
-    await persistSpentPayment(key) // durable: survives restarts so the payment can't be replayed
-    return { ok: true }
+    await ensureHydrated() // fail-closed: a payment isn't accepted while the spent set is unknown
+    if (spent.has(key)) return { ok: false, reason: 'payment already used' }
+    // Serialize concurrent verifications of the same hash so only one can pass the check.
+    if (verifying.has(key)) return { ok: false, reason: 'payment verification already in progress' }
+    verifying.add(key)
+    try {
+      const client = await publicClient()
+      const receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` })
+      if (receipt.status !== 'success') return { ok: false, reason: 'payment tx did not succeed' }
+      const { parseEventLogs } = await import('viem')
+      const transfers = parseEventLogs({ abi: TRANSFER_ABI, eventName: 'Transfer', logs: receipt.logs })
+      const wantFrom = from?.toLowerCase()
+      const paid = transfers.find(
+        (l) =>
+          (l.address as string).toLowerCase() === CONTRACTS.usdc.toLowerCase() &&
+          (l.args as { to: string }).to.toLowerCase() === payTo &&
+          (l.args as { value: bigint }).value >= PRICE &&
+          (!wantFrom || (l.args as { from: string }).from.toLowerCase() === wantFrom),
+      )
+      if (!paid)
+        return {
+          ok: false,
+          reason: wantFrom
+            ? `no USDC payment of >= ${PRICE} from ${wantFrom} to ${payTo} in this tx`
+            : `no USDC payment of >= ${PRICE} to ${payTo} in this tx`,
+        }
+      spent.add(key)
+      await persistSpentPayment(key) // durable: survives restarts so the payment can't be replayed
+      return { ok: true }
+    } finally {
+      verifying.delete(key)
+    }
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : 'verification error' }
   }

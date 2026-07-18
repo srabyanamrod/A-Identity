@@ -46,3 +46,15 @@ test('settledUsd is carried through, settledOnchain mirrors the count', () => {
   assert.equal(r.settledOnchain, 3)
   assert.equal(r.settledUsd, 12.5)
 })
+
+test('an unparseable createdAt yields tenure 0 and a finite score (no NaN bypass)', () => {
+  // A NaN score would slip past every downstream `score < threshold` risk comparison.
+  const r = computeAgentReputation({ settledCount: 0, rejected: 0, onchainRegistered: true, createdAt: 'soon' }, asOf)
+  assert.ok(Number.isFinite(r.score), `score must be finite, got ${r.score}`)
+  assert.equal(r.breakdown.tenure, 0)
+})
+
+test('a future createdAt never produces negative tenure', () => {
+  const r = computeAgentReputation({ settledCount: 1, rejected: 0, onchainRegistered: false, createdAt: '2999-01-01' }, asOf)
+  assert.equal(r.breakdown.tenure, 0)
+})

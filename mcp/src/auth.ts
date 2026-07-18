@@ -57,9 +57,16 @@ function sign(data: string): string {
   return createHmac('sha256', SECRET).update(data).digest('base64url')
 }
 
+/** Session lifetime. A bearer token is the write-side credential, so it must not be valid
+ *  forever if it leaks — it carries an `exp` and expires. Override with AUTH_TOKEN_TTL_MS. */
+const TOKEN_TTL_MS = Math.max(60_000, Number(process.env.AUTH_TOKEN_TTL_MS ?? 7 * 24 * 60 * 60 * 1000))
+
 /** Issue an opaque session token for a subject established via `method`. */
 export function issueToken(subject: string, method: AuthMethod): string {
-  const payload = Buffer.from(JSON.stringify({ sub: subject, method, iat: Date.now() })).toString('base64url')
+  const now = Date.now()
+  const payload = Buffer.from(
+    JSON.stringify({ sub: subject, method, iat: now, exp: now + TOKEN_TTL_MS }),
+  ).toString('base64url')
   return `${payload}.${sign(payload)}`
 }
 
@@ -77,9 +84,13 @@ export function verifyToken(token: string | undefined | null): Caller | null {
       sub?: string
       email?: string // legacy tokens carried { email } with no method
       method?: AuthMethod
+      exp?: number
     }
     const subject = obj.sub ?? obj.email
     if (!subject) return null
+    // Enforce expiry when present (all tokens issued now carry one). A tampered exp can't
+    // help an attacker: the HMAC over the payload was already verified above.
+    if (typeof obj.exp === 'number' && Date.now() > obj.exp) return null
     // Legacy tokens (no method) fail closed → treated as unverified guests.
     const method: AuthMethod = obj.method === 'wallet' || obj.method === 'email' ? obj.method : 'guest'
     return { subject, method }

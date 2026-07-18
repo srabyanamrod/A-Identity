@@ -65,7 +65,9 @@ export default function Settlements() {
     })()
   }, [])
 
-  const load = useCallback(async (id: string) => {
+  // `isActive` guards setState so a late response for a previously-selected agent can't
+  // overwrite the settlements now shown for a different one.
+  const load = useCallback(async (id: string, isActive: () => boolean = () => true) => {
     try {
       const res = await apiFetch(`/api/instructions?agentId=${id}`)
       const data = (await res.json()) as { instructions: Instruction[] }
@@ -80,17 +82,18 @@ export default function Settlements() {
       const sorted = [...data.instructions].sort(
         (a, b) => rank(a.status) - rank(b.status) || b.createdAt.localeCompare(a.createdAt),
       )
-      setItems(sorted)
-      setError(null)
+      if (isActive()) { setItems(sorted); setError(null) }
     } catch {
-      setError('Could not load settlements.')
+      if (isActive()) setError('Could not load settlements.')
     } finally {
-      setLoading(false)
+      if (isActive()) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    if (agentId) load(agentId)
+    let active = true
+    if (agentId) load(agentId, () => active)
+    return () => { active = false }
   }, [agentId, load])
 
   const createPayment = async () => {
@@ -104,7 +107,7 @@ export default function Settlements() {
         body: JSON.stringify({
           agentId,
           type: 'payment',
-          amountUsd: Number(amount) || 0,
+          amountUsd: Math.max(0, Number(amount) || 0), // never send a negative amount
           payee: payee.trim() || 'agent://provider',
         }),
         onWaking: () => setError('Waking up the backend (free tier)…'),

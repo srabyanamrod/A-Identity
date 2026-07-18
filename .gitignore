@@ -43,6 +43,12 @@ AYBARS-BRIEF.md
 # Internal session handoff for the next agent (not for the repo)
 SESSION-HANDOFF.md
 
+# Internal security working doc — enumerates live/unpatched gaps; never publish
+CRITICAL-GAPS.md
+
+# Local UI-drive screenshots (Playwright); never commit
+ui-shots/
+
 # Internal multichain strategy doc (kept local, not for the public repo)
 MULTICHAIN-STRATEGY.md
 

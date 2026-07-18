@@ -53,3 +53,17 @@ test('legacy { email }-only tokens fail closed to guest (never verified)', async
 test('two different subjects get distinct tokens', () => {
   assert.notEqual(issueToken('a@x.com', 'email'), issueToken('b@x.com', 'email'))
 })
+
+test('a freshly issued token verifies (carries a future exp)', () => {
+  assert.equal(verifyToken(issueToken('0xabc', 'wallet'))?.subject, '0xabc')
+})
+
+test('a validly-signed but EXPIRED token is rejected', async () => {
+  // Forge a correctly-signed token whose exp is in the past — must not verify.
+  const { createHmac } = await import('node:crypto')
+  const payload = Buffer.from(
+    JSON.stringify({ sub: '0xabc', method: 'wallet', iat: 0, exp: Date.now() - 1000 }),
+  ).toString('base64url')
+  const sig = createHmac('sha256', AUTH_SECRET).update(payload).digest('base64url')
+  assert.equal(verifyToken(`${payload}.${sig}`), null)
+})

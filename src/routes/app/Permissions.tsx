@@ -87,22 +87,28 @@ export default function Permissions() {
     })()
   }, [])
 
-  const loadPolicy = useCallback(async (id: string) => {
+  // `isActive` guards setState so a late policy response for a previously-selected agent
+  // can't overwrite the caps/limits now shown for a different one.
+  const loadPolicy = useCallback(async (id: string, isActive: () => boolean = () => true) => {
     try {
       const res = await apiFetch(`/api/agents/policy?agentId=${id}`)
       const p = (await res.json()) as Policy
-      setPolicy(p)
-      setDraft(p.permissions)
-      setError(null)
+      if (isActive()) {
+        setPolicy(p)
+        setDraft(p.permissions)
+        setError(null)
+      }
     } catch {
-      setError('Could not load the policy.')
+      if (isActive()) setError('Could not load the policy.')
     } finally {
-      setLoading(false)
+      if (isActive()) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    if (agentId) loadPolicy(agentId)
+    let active = true
+    if (agentId) loadPolicy(agentId, () => active)
+    return () => { active = false }
   }, [agentId, loadPolicy])
 
   const save = async () => {
@@ -505,7 +511,7 @@ function PolicyTester({ agentId, onSpent }: { agentId: string; onSpent: () => vo
       const res = await apiFetch('/api/instructions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ agentId, type: 'payment', amountUsd: Number(amount) || 0, payee, memo: 'policy test' }),
+        body: JSON.stringify({ agentId, type: 'payment', amountUsd: Math.max(0, Number(amount) || 0), payee, memo: 'policy test' }),
         onWaking: () => setResult({ status: 'error', policyNote: 'Waking up the backend (free tier)…' }),
       })
       const ix = await readJson<{ status?: string; policyNote?: string; error?: string }>(res)
@@ -632,7 +638,7 @@ function VaultPanel({ agentId }: { agentId: string }) {
       const res = await apiFetch('/api/agents/vault', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ agentId, fundUsd: Number(fund) || 0 }),
+        body: JSON.stringify({ agentId, fundUsd: Math.max(0, Number(fund) || 0) }),
         timeoutMs: 90_000, // deploying a contract + funding it on-chain takes a while
         onWaking: () => setErr('Waking up the backend (free tier)…'),
       })

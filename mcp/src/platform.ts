@@ -205,10 +205,18 @@ export function recordWallet(address: string): { wallet: Wallet } {
   return { wallet }
 }
 
-export function assignWallet(address: string, agentId: string): Wallet | null {
+/**
+ * Bind a recorded wallet to an agent. Owner-only: only the agent's recorded owner may
+ * (re)point its wallet address — otherwise any verified caller could overwrite another
+ * owner's agent walletAddress and redirect its agent-to-agent settlements. Mirrors the
+ * `ownsAgent` gate every other agent-scoped mutation already enforces.
+ */
+export function assignWallet(address: string, agentId: string, caller?: string): Wallet | { error: string } {
   const wallet = state.wallets.find((w) => w.address.toLowerCase() === address.toLowerCase())
   const agent = state.agents.find((a) => a.id === agentId)
-  if (!wallet || !agent) return null
+  if (!wallet) return { error: 'Unknown wallet' }
+  if (!agent) return { error: 'Unknown agent' }
+  if (!ownsAgent(agent, caller)) return { error: 'Forbidden: not the agent owner' }
   wallet.agentId = agentId
   agent.walletAddress = wallet.address
   pushActivity(agent, `Wallet ${short(wallet.address)} assigned`)
@@ -273,12 +281,17 @@ export function createAgent(input: {
       ? input.services
       : input.capabilities.map((c) => ({ name: c, priceUsd: 1, unit: 'per action' }))
 
+  // Bound stored strings/arrays so a large registration can't balloon the single
+  // persisted state blob (which is serialized in full on every save).
+  const clamp = (s: string, n: number) => (typeof s === 'string' ? s.slice(0, n) : '')
+  const boundedCaps = input.capabilities.slice(0, 50).map((c) => clamp(String(c), 200))
+
   const agent: PlatformAgent = {
     id: id('agent'),
-    name: input.name,
-    description: input.description,
-    category: input.category,
-    capabilities: input.capabilities,
+    name: clamp(input.name, 200),
+    description: clamp(input.description, 5000),
+    category: clamp(input.category, 100),
+    capabilities: boundedCaps,
     services,
     permissions,
     walletAddress: input.walletAddress ?? null,
@@ -470,6 +483,10 @@ export async function getAgentKya(agentId: string) {
  * through the vault (chain-enforced), with the server engine as the pre-check.
  * Owner-only; env-gated behind ARC_SIGNER_KEY.
  */
+/** Agent on-chain ops (vault deploy) in flight, so a client timeout-retry can't fire a
+ *  second real deploy + funding for the same agent. Process-local (single-instance deploy). */
+const inFlightAgentOps = new Set<string>()
+
 export async function provisionAgentVault(
   agentId: string,
   opts: { fundUsd?: number; caller?: string; ownerAddress?: string } = {},
@@ -492,6 +509,23 @@ export async function provisionAgentVault(
         ? (agent.walletAddress as string)
         : undefined
 
+  // Require a REAL human/Safe owner distinct from the server operator. Without one the
+  // vault would deploy with owner == operator (the signer), so on-chain freeze/withdraw
+  // would not be human-controlled and a signer compromise could drain every vault. Refuse
+  // rather than silently collapse the two roles.
+  if (!ownerAddress) {
+    return {
+      error:
+        'Provide an ownerAddress (a human/Safe wallet distinct from the server operator): ' +
+        'sign in with a wallet, pass ownerAddress, or give the agent a wallet first. The vault ' +
+        'owner (freeze/withdraw) must not be the same key that operates it.',
+    }
+  }
+
+  const opKey = `vault:${agentId}`
+  if (inFlightAgentOps.has(opKey)) return { error: 'A vault is already being provisioned for this agent' }
+  inFlightAgentOps.add(opKey)
+  try {
   const dep = await deployPolicyVault({
     owner: ownerAddress,
     dailyCapUsd: agent.permissions.dailyCapUsd,
@@ -528,6 +562,9 @@ export async function provisionAgentVault(
     deployTx: dep.txHash,
     deployExplorer: dep.explorerUrl,
     funding,
+  }
+  } finally {
+    inFlightAgentOps.delete(opKey)
   }
 }
 
@@ -780,6 +817,26 @@ function ownsAgent(agent: PlatformAgent, caller?: string): boolean {
   return Boolean(agent.owner) && agent.owner === caller
 }
 
+/** Sanitize a client-supplied permissions patch: clamp numbers into a sane range (a
+ *  1e308 auto-approve line would silently disable human approval), coerce booleans, and
+ *  bound the allowlist. Only well-formed fields survive to be merged. */
+function sanitizePermissions(partial: Partial<Permissions>): Partial<Permissions> {
+  const out: Partial<Permissions> = {}
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(1_000_000, Math.max(0, v)) : undefined)
+  if (partial.dailyCapUsd !== undefined) { const n = num(partial.dailyCapUsd); if (n !== undefined) out.dailyCapUsd = n }
+  if (partial.autoApproveUnderUsd !== undefined) { const n = num(partial.autoApproveUnderUsd); if (n !== undefined) out.autoApproveUnderUsd = n }
+  if (partial.agentToAgent !== undefined) out.agentToAgent = Boolean(partial.agentToAgent)
+  if (partial.agentToHuman !== undefined) out.agentToHuman = Boolean(partial.agentToHuman)
+  if (partial.frozen !== undefined) out.frozen = Boolean(partial.frozen)
+  if (Array.isArray(partial.payeeAllowlist)) {
+    out.payeeAllowlist = partial.payeeAllowlist
+      .filter((x): x is string => typeof x === 'string')
+      .slice(0, 100)
+      .map((x) => x.slice(0, 100))
+  }
+  return out
+}
+
 export async function updateAgentPermissions(
   agentId: string,
   partial: Partial<Permissions>,
@@ -788,7 +845,7 @@ export async function updateAgentPermissions(
   const agent = state.agents.find((a) => a.id === agentId)
   if (!agent) return { error: 'Unknown agent' }
   if (!ownsAgent(agent, caller)) return { error: 'Forbidden: not the agent owner' }
-  agent.permissions = { ...agent.permissions, ...partial }
+  agent.permissions = { ...agent.permissions, ...sanitizePermissions(partial) }
   pushActivity(agent, 'Permissions updated by a human')
 
   // If the agent has an on-chain policy vault, push the new limits to it so the
@@ -862,8 +919,11 @@ export function createInstruction(input: {
   const agent = state.agents.find((a) => a.id === input.agentId)
   if (!agent) return { error: 'Unknown agent' }
   if (!ownsAgent(agent, input.caller)) return { error: 'Forbidden: not the agent owner' }
+  // Defense in depth (the HTTP layer validates too): a non-finite/negative amount must never
+  // reach the daily-cap math, where a negative would subtract from today's spend.
+  if (!Number.isFinite(input.amountUsd) || input.amountUsd < 0) return { error: 'amountUsd must be a non-negative number' }
 
-  const count = Math.max(1, Math.floor(input.count ?? 1))
+  const count = Math.min(1000, Math.max(1, Math.floor(input.count ?? 1)))
   const total = input.amountUsd * count
   const p = agent.permissions
 

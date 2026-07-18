@@ -59,9 +59,11 @@ export async function runAgentRun(
     }
   }
 
-  const amountUsd = input.amountUsd ?? 0.005
+  // Bound every client-chosen amount: this run deposits/spends the shared server signer,
+  // so an over-large amount/budget would drain the house key.
+  const amountUsd = Math.min(0.05, Math.max(0, Number.isFinite(input.amountUsd) ? (input.amountUsd as number) : 0.005))
   const maxCalls = Math.max(1, Math.min(12, Math.floor(input.maxCalls ?? 6)))
-  const budgetUsd = input.budgetUsd ?? amountUsd * 4 // by default the agent can afford ~4 of the requested calls
+  const budgetUsd = Math.min(5, Math.max(0, Number.isFinite(input.budgetUsd) ? (input.budgetUsd as number) : amountUsd * 4))
   const feeBps = Number(env.PROTOCOL_FEE_BPS ?? DEFAULT_FEE_BPS)
   const treasury = env.PROTOCOL_FEE_RECIPIENT ?? TREASURY_DEFAULT
 
@@ -73,8 +75,11 @@ export async function runAgentRun(
   let stoppedReason: 'budget-reached' | 'max-calls' | 'settlement-error' = 'max-calls'
 
   for (let n = 1; n <= maxCalls; n++) {
-    // The agent's own decision: would this payment breach the human-set budget?
-    if (volumeUsd + amountUsd > budgetUsd + 1e-9) {
+    // The agent's own decision: would this payment breach the human-set budget? The budget
+    // bounds TOTAL outflow, so we include the protocol fee (bps of volume) that this payment
+    // would accrue — otherwise volume + fee could exceed the budget the human set.
+    const prospectiveTotal = (volumeUsd + amountUsd) * (1 + feeBps / 10_000)
+    if (prospectiveTotal > budgetUsd + 1e-9) {
       stoppedReason = 'budget-reached'
       break
     }

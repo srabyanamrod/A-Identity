@@ -49,8 +49,11 @@ export function computeAgentReputation(s: ReputationSignals, asOf: Date = new Da
   const settlement = Math.min(600, Math.round(600 * (1 - Math.exp(-s.settledCount / 6))) + idBonus)
   // Validation: share of clean (settled vs rejected) actions. Capped at 240.
   const validation = total === 0 ? 0 : Math.round(240 * (s.settledCount / total))
-  // Tenure: ~1 point per 2 days since creation. Capped at 160.
-  const days = Math.max(0, Math.floor((asOf.getTime() - new Date(s.createdAt).getTime()) / DAY_MS))
+  // Tenure: ~1 point per 2 days since creation. Capped at 160. An unparseable/absent
+  // createdAt contributes 0 tenure (never NaN) — a NaN score would otherwise slip past
+  // every downstream risk comparison (`NaN < threshold` is always false).
+  const createdMs = new Date(s.createdAt).getTime()
+  const days = Number.isFinite(createdMs) ? Math.max(0, Math.floor((asOf.getTime() - createdMs) / DAY_MS)) : 0
   const tenure = Math.min(160, Math.round(days / 2))
   const score = Math.max(0, Math.min(1000, settlement + validation + tenure))
   return { score, breakdown: { settlement, validation, tenure }, settledOnchain: s.settledCount, settledUsd: s.settledUsd ?? 0 }

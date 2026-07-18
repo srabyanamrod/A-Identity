@@ -1,10 +1,40 @@
 import { useState } from 'react'
-import { encodeFunctionData } from 'viem'
+import { encodeFunctionData, toHex } from 'viem'
 import { CheckCircle2, ExternalLink, Lock, Zap } from 'lucide-react'
 
 import { apiFetch } from '../../lib/api'
 import { Button } from '../ui/button'
 import { getActiveInjectedProvider, getConnectedProvider } from '../../lib/wallets'
+import { ARC_TESTNET } from '../../lib/arc'
+
+/** Arc Testnet chain id as the 0x-hex EIP-155 wallets expect. */
+const ARC_CHAIN_HEX = '0x' + ARC_TESTNET.id.toString(16)
+
+/** Make sure the wallet is on Arc before we send a USDC transfer — otherwise the transfer
+ *  would be broadcast to the Arc-USDC address on whatever chain is active (e.g. Ethereum
+ *  mainnet), a confusing and potentially fund-losing transaction. Switches (or adds) Arc. */
+async function ensureArcChain(eth: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> }) {
+  const current = (await eth.request({ method: 'eth_chainId' })) as string
+  if (typeof current === 'string' && current.toLowerCase() === ARC_CHAIN_HEX) return
+  try {
+    await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: ARC_CHAIN_HEX }] })
+  } catch (err) {
+    if ((err as { code?: number })?.code === 4902) {
+      await eth.request({
+        method: 'wallet_addEthereumChain',
+        params: [{
+          chainId: ARC_CHAIN_HEX,
+          chainName: ARC_TESTNET.name,
+          nativeCurrency: ARC_TESTNET.nativeCurrency,
+          rpcUrls: [ARC_TESTNET.rpc.http],
+          blockExplorerUrls: [ARC_TESTNET.blockExplorer],
+        }],
+      })
+    } else {
+      throw new Error('Switch your wallet to Arc Testnet to pay.')
+    }
+  }
+}
 
 const ERC20_TRANSFER = [
   {
@@ -71,6 +101,8 @@ export default function X402Panel() {
       const accounts = (await eth.request({ method: 'eth_requestAccounts' })) as string[]
       const from = accounts?.[0]
       if (!from) throw new Error('No account selected.')
+      // Pin the wallet to Arc before sending, so the USDC transfer can't land on another chain.
+      await ensureArcChain(eth)
       const data = encodeFunctionData({
         abi: ERC20_TRANSFER,
         functionName: 'transfer',
@@ -82,12 +114,30 @@ export default function X402Panel() {
       })) as string
       setTx(txHash)
 
+      // 2b. Prove control of the paying wallet by signing the (nonce, payer) challenge.
+      //     The server binds the redemption to this signature AND to the on-chain sender,
+      //     so only the wallet that actually paid can unlock it — a front-runner who only
+      //     scraped the tx hash off the public chain cannot.
+      let paySig: string | null = null
+      if (nonce) {
+        const authMessage =
+          `A-Identity x402 payment authorization\nResource: /api/x402/data\nNonce: ${nonce}\nPayer: ${from.toLowerCase()}`
+        paySig = (await eth.request({
+          method: 'personal_sign',
+          params: [toHex(authMessage), from],
+        })) as string
+      }
+
       // 3. Retry with the payment proof until the server verifies it on-chain.
       setPhase('verifying')
       let paid: Resource | null = null
       for (let i = 0; i < 20; i++) {
         const pr = await apiFetch('/api/x402/data', {
-          headers: { 'X-Payment': txHash, ...(nonce ? { 'X-Payment-Nonce': nonce } : {}) },
+          headers: {
+            'X-Payment': txHash,
+            ...(nonce ? { 'X-Payment-Nonce': nonce } : {}),
+            ...(paySig ? { 'X-Payment-Payer': from, 'X-Payment-Sig': paySig } : {}),
+          },
           retries: 0, // this loop already retries; don't double-retry inside apiFetch
         })
         if (pr.status === 200) {
