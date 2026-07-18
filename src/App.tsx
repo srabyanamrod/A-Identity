@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import ScrollToTop from './components/ScrollToTop'
+import { useAuth } from './store/auth'
 import Landing from './routes/Landing'
 import Login from './routes/Login'
 import Signup from './routes/Signup'
@@ -20,6 +22,12 @@ import Permissions from './routes/app/Permissions'
 import Marketplace from './routes/app/Marketplace'
 
 export default function App() {
+  // Restore the session from the HttpOnly cookie once on load (the token isn't in
+  // localStorage anymore). A definitive 401 clears it; a cold backend leaves it intact.
+  useEffect(() => {
+    void useAuth.getState().restore()
+  }, [])
+
   return (
     <BrowserRouter>
       <ScrollToTop />

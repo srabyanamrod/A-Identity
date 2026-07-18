@@ -185,7 +185,7 @@ async function main() {
   })
   const agentId = createRes.json?.agent?.id
   check('agent created with an owner', createRes.status === 201 && !!agentId && !!createRes.json?.agent?.owner)
-  const platform = await api('GET', '/api/platform-agents')
+  const platform = await api('GET', '/api/platform-agents', { token: alice }) // now owner-scoped
   check('agent appears in the platform list', platform.json?.agents?.some((a) => a.id === agentId))
   // The default Agent House feed is the KYA-verified showcase; a freshly created agent
   // is not verified yet, so it is reachable via ?all=1 ("Show all, including pending").
@@ -241,7 +241,7 @@ async function main() {
     const vExec = await api('POST', '/api/instructions/execute', { token: alice, body: { id: vIx.json?.id } })
     check('payment settles THROUGH the vault (enforcedBy=onchain-vault)', vExec.json?.status === 'executed_onchain' && vExec.json?.enforcedBy === 'onchain-vault', `${vExec.json?.status}/${vExec.json?.enforcedBy}`)
     check('  ↳ vault settlement carries a real Arc tx hash', /^0x[0-9a-f]{64}$/i.test(vExec.json?.txHash || ''))
-    const vRead = await api('GET', `/api/agents/vault?agentId=${payer}`)
+    const vRead = await api('GET', `/api/agents/vault?agentId=${payer}`, { token: alice }) // now owner-gated
     check('live vault read reports on-chain policy + balance', vRead.status === 200 && typeof vRead.json?.dailyCapUsd === 'number' && typeof vRead.json?.balanceUsd === 'number', `HTTP ${vRead.status}`)
   } else {
     check('vault provision returns a prepared note without a signer key', !vaultRes.json?.vaultAddress, JSON.stringify(vaultRes.json || {}).slice(0, 70))

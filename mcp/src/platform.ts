@@ -1147,6 +1147,22 @@ export function listInstructions(agentId?: string): Instruction[] {
   return agentId ? state.instructions.filter((i) => i.agentId === agentId) : state.instructions
 }
 
+/** Instructions across every agent the caller owns (for the unscoped list read). */
+export function listInstructionsForOwner(caller?: string): Instruction[] {
+  if (!caller) return []
+  const mine = new Set(state.agents.filter((a) => a.owner === caller).map((a) => a.id))
+  return state.instructions.filter((i) => mine.has(i.agentId))
+}
+
+/** Read-access decision for an agent-scoped GET: only the owner may read its private
+ *  config (policy, vault, treasury, Circle wallet, payment history). Public reads
+ *  (identity resolve, reputation, marketplace) do NOT go through this. */
+export function agentAccess(agentId: string, caller?: string): 'ok' | 'unknown' | 'forbidden' {
+  const agent = state.agents.find((a) => a.id === agentId)
+  if (!agent) return 'unknown'
+  return ownsAgent(agent, caller) ? 'ok' : 'forbidden'
+}
+
 // ── marketplace ───────────────────────────────────────────────────────────────
 
 export function followAgent(agentId: string, follower: string): { followers: number } | { error: string } {

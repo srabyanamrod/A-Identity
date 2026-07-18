@@ -41,12 +41,13 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const user = useAuth((s) => s.user)
-  const token = useAuth((s) => s.token)
+  const verified = useAuth((s) => s.verified)
   const logout = useAuth((s) => s.logout)
   const mcp = useMcpHealth()
-  // A user with no token is a browse-only guest: reads work, but the backend rejects
-  // their writes. Surface that up front so an action never fails silently.
-  const isGuest = Boolean(user) && !token
+  // An unverified (guest) session is browse-only: reads work, but the backend rejects
+  // its writes. Derived from `verified` (not the in-memory token, which is null after a
+  // cookie-restored reload). Surface it up front so an action never fails silently.
+  const isGuest = Boolean(user) && !verified
 
   // Pre-warm the free-tier backend the moment the console opens, so it is already awake
   // by the time the user clicks Anchor / Execute / Provision — heading off the cold-start

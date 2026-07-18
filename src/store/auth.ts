@@ -11,8 +11,13 @@ export type User = {
 
 type AuthState = {
   user: User | null
-  /** Session token issued by the backend; required for mutating requests. */
+  /** Session token issued by the backend; kept in memory only (never persisted) as a
+   *  Bearer fallback. The real credential is the HttpOnly cookie. */
   token: string | null
+  /** True for a verified (wallet / magic-link) session; false for a browse-only guest.
+   *  Drives "can act" in the UI — decoupled from the in-memory token, which is null after
+   *  a cookie-restored reload. */
+  verified: boolean
   /** Guest preview: an email-only local session (no token → browse-only). */
   login: (email: string, name?: string) => Promise<void>
   /** Real auth: Sign-In with Ethereum. Prove wallet ownership by signing a nonce.
@@ -22,30 +27,34 @@ type AuthState = {
   requestMagicLink: (email: string) => Promise<void>
   /** Finish magic-link sign-in with the token carried by the emailed link. */
   loginWithMagicToken: (token: string) => Promise<void>
+  /** Restore the session from the HttpOnly cookie on load (no token persisted). */
+  restore: () => Promise<void>
   logout: () => void
 }
 
 export const useAuth = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
+      verified: false,
       login: async (email, name) => {
         try {
           const res = await fetch(`${MCP_BASE}/api/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({ email, name }),
           })
           if (res.ok) {
             const data = (await res.json()) as { token: string; user: User }
-            set({ user: data.user, token: data.token })
+            set({ user: data.user, token: data.token, verified: false }) // guest: browse-only
             return
           }
         } catch {
           // Backend unreachable, fall through to a local-only session (no token).
         }
-        set({ user: { email, name: name?.trim() || email.split('@')[0] }, token: null })
+        set({ user: { email, name: name?.trim() || email.split('@')[0] }, token: null, verified: false })
       },
       loginWallet: async (provider) => {
         // Remember the wallet the user chose, so later payments (x402) use this exact
@@ -63,6 +72,7 @@ export const useAuth = create<AuthState>()(
         const nres = await fetch(`${MCP_BASE}/api/auth/nonce`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ address }),
         }).catch(() => null)
         if (!nres || !nres.ok) throw new Error('Could not reach the server (it may be waking up). Try again in a moment.')
@@ -76,6 +86,7 @@ export const useAuth = create<AuthState>()(
         const vres = await fetch(`${MCP_BASE}/api/auth/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ address, message, signature }),
         })
         if (!vres.ok) {
@@ -83,12 +94,13 @@ export const useAuth = create<AuthState>()(
           throw new Error(e.error ?? 'Wallet sign-in failed.')
         }
         const data = (await vres.json()) as { token: string; user: User }
-        set({ user: data.user, token: data.token })
+        set({ user: data.user, token: data.token, verified: true })
       },
       requestMagicLink: async (email) => {
         const res = await fetch(`${MCP_BASE}/api/auth/magic/request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ email }),
         }).catch(() => null)
         const data = (res ? await res.json().catch(() => ({})) : {}) as { sent?: boolean; error?: string }
@@ -98,6 +110,7 @@ export const useAuth = create<AuthState>()(
         const res = await fetch(`${MCP_BASE}/api/auth/magic/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ token }),
         })
         if (!res.ok) {
@@ -105,11 +118,46 @@ export const useAuth = create<AuthState>()(
           throw new Error(e.error ?? 'This sign-in link is invalid or expired.')
         }
         const data = (await res.json()) as { token: string; user: User }
-        set({ user: data.user, token: data.token })
+        set({ user: data.user, token: data.token, verified: true })
       },
-      logout: () => set({ user: null, token: null }),
+      restore: async () => {
+        // On load, ask the backend who we are from the HttpOnly cookie. Only a definitive
+        // 401 clears the session — a cold/unreachable backend must NOT log the user out.
+        try {
+          // Prefer the cookie; also send an in-memory token if one is still around (e.g. a
+          // pre-cookie session rehydrated from old localStorage), so upgrading users aren't
+          // force-logged-out on first load after this change.
+          const t = get().token
+          const res = await fetch(`${MCP_BASE}/api/auth/me`, {
+            credentials: 'include',
+            headers: t ? { Authorization: `Bearer ${t}` } : {},
+          })
+          if (res.status === 401) {
+            set({ user: null, token: null, verified: false })
+            return
+          }
+          if (res.ok) {
+            const data = (await res.json()) as { user: User; verified?: boolean }
+            if (data.user) set({ user: data.user, verified: Boolean(data.verified) })
+          }
+        } catch {
+          /* backend waking / unreachable — keep the persisted session */
+        }
+      },
+      logout: () => {
+        // Clear the server cookie too (best effort), then drop the local session.
+        try {
+          void fetch(`${MCP_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' })
+        } catch {
+          /* ignore */
+        }
+        set({ user: null, token: null, verified: false })
+      },
     }),
-    { name: 'a-identity-auth' },
+    // Persist ONLY the (non-secret) user + verified flag; the session TOKEN is never
+    // written to localStorage — it lives in the HttpOnly cookie (and in memory for this
+    // tab). `restore()` reconciles `verified` against the cookie on load.
+    { name: 'a-identity-auth', partialize: (s) => ({ user: s.user, verified: s.verified }) },
   ),
 )
 

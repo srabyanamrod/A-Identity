@@ -32,6 +32,8 @@ import {
   followAgent,
   getWalletBalance,
   listInstructions,
+  listInstructionsForOwner,
+  agentAccess,
   listPlatformAgents,
   marketplace,
   updateAgentPermissions,
@@ -71,11 +73,39 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? '')
   .map((o) => o.trim().toLowerCase())
   .filter(Boolean)
 
-/** Resolve the Access-Control-Allow-Origin value for a request's Origin header. */
+/** Resolve the Access-Control-Allow-Origin value for a request's Origin header. Echoes the
+ *  caller's origin so credentialed (cookie) requests are allowed. With no allowlist (dev) it
+ *  echoes whatever origin called — safe because the session cookie is SameSite=Lax, so it is
+ *  never sent on a cross-site fetch from another origin. */
 function resolveCorsOrigin(origin: string | undefined): string {
-  if (ALLOWED_ORIGINS.length === 0) return '*'
+  if (ALLOWED_ORIGINS.length === 0) return origin ?? '*'
   if (origin && ALLOWED_ORIGINS.includes(origin.toLowerCase())) return origin
   return ALLOWED_ORIGINS[0] // a safe default so preflights still get a concrete allowed origin
+}
+
+// ── HttpOnly session cookie (closes the JS-readable-token exposure) ────────────────
+// The session token also rides in an HttpOnly cookie, so the SPA never has to keep it in
+// localStorage. In prod the app is same-origin (Vercel proxy → Render), so the cookie is
+// first-party; SameSite=Lax + Secure. Requests may still present a Bearer token (the
+// in-memory fallback), so both paths are accepted.
+const IS_PROD = process.env.NODE_ENV === 'production' || !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL
+const SESSION_COOKIE = 'aid_session'
+const SESSION_MAX_AGE = 7 * 24 * 60 * 60 // seconds
+
+function parseCookies(header: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (typeof header !== 'string') return out
+  for (const part of header.split(';')) {
+    const i = part.indexOf('=')
+    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim())
+  }
+  return out
+}
+function sessionCookie(token: string): string {
+  return `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE}${IS_PROD ? '; Secure' : ''}`
+}
+function clearSessionCookie(): string {
+  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${IS_PROD ? '; Secure' : ''}`
 }
 
 /**
@@ -197,6 +227,19 @@ function errStatus(msg: string): number {
   return msg.startsWith('Forbidden') ? 403 : msg.startsWith('Unknown') ? 404 : 400
 }
 
+/** Guard an agent-scoped private read (policy / vault / treasury / Circle wallet / payment
+ *  history): only the owner may read it. Returns true (and sends the response) when access
+ *  is denied, so a handler can `if (denyRead(...)) return`. Public reads (identity resolve,
+ *  reputation, marketplace) never call this. */
+function denyRead(res: http.ServerResponse, agentId: string, caller?: string): boolean {
+  const access = agentAccess(agentId, caller)
+  if (access === 'ok') return false
+  sendJson(res, access === 'unknown' ? 404 : 403, {
+    error: access === 'unknown' ? 'Unknown agent' : 'Forbidden: not the agent owner',
+  })
+  return true
+}
+
 /** The real agents this platform knows, in a public discovery shape. Shared by the
  *  REST /api/agents endpoint and the MCP `list_agents` tool. No mocks. */
 function publicAgents() {
@@ -215,8 +258,12 @@ const server = http.createServer(async (req, res) => {
   // CORS: '*' for local dev, or the request's origin when it's on the ALLOWED_ORIGINS
   // allowlist (production lockdown). Vary: Origin keeps caches per-origin correct.
   const reqOrigin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined
-  res.setHeader('Access-Control-Allow-Origin', resolveCorsOrigin(reqOrigin))
-  if (ALLOWED_ORIGINS.length > 0) res.setHeader('Vary', 'Origin')
+  const corsOrigin = resolveCorsOrigin(reqOrigin)
+  res.setHeader('Access-Control-Allow-Origin', corsOrigin)
+  res.setHeader('Vary', 'Origin')
+  // Allow the browser to send/receive the HttpOnly session cookie. Credentials can't be
+  // combined with '*', so only enable them when echoing a concrete origin.
+  if (corsOrigin !== '*') res.setHeader('Access-Control-Allow-Credentials', 'true')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   // Includes the x402 payment headers (X-Payment*, PAYMENT-SIGNATURE); without them a
   // cross-origin caller's redemption preflight is blocked and shows as "Failed to fetch".
@@ -237,11 +284,11 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  // Session identity from the bearer token (null if none / invalid).
+  // Session identity from the HttpOnly cookie, or a Bearer token (the in-memory fallback).
   const authHeader = req.headers.authorization
-  const caller = verifyToken(
-    typeof authHeader === 'string' && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null,
-  )
+  const bearer = typeof authHeader === 'string' && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+  const cookieToken = parseCookies(req.headers.cookie)[SESSION_COOKIE] ?? null
+  const caller = verifyToken(bearer ?? cookieToken)
   // The subject string used for ownership checks (email or wallet address).
   const callerId = caller?.subject
 
@@ -253,8 +300,10 @@ const server = http.createServer(async (req, res) => {
     // Unverified, browse-only session: the email is NOT proven. This token is a
     // 'guest' — it cannot own agents or mutate. To act, sign in with a wallet or a
     // magic link (both verified). This is what closes the email-impersonation hole.
+    const token = issueToken(email, 'guest')
+    res.setHeader('Set-Cookie', sessionCookie(token))
     sendJson(res, 200, {
-      token: issueToken(email, 'guest'),
+      token,
       user: { email, name: body.name?.trim() || email.split('@')[0] },
     })
     return
@@ -302,8 +351,10 @@ const server = http.createServer(async (req, res) => {
     }
     nonces.delete(addr)
     // Wallet ownership proven by signature → a verified session.
+    const token = issueToken(addr, 'wallet')
+    res.setHeader('Set-Cookie', sessionCookie(token))
     sendJson(res, 200, {
-      token: issueToken(addr, 'wallet'),
+      token,
       user: { email: addr, name: `${addr.slice(0, 6)}...${addr.slice(-4)}` },
     })
     return
@@ -326,7 +377,26 @@ const server = http.createServer(async (req, res) => {
     const email = verifyMagicToken(body?.token)
     if (!email) { sendJson(res, 401, { error: 'This sign-in link is invalid or expired.' }); return }
     // Email ownership proven by the one-time link → a verified session.
-    sendJson(res, 200, { token: issueToken(email, 'email'), user: { email, name: email.split('@')[0] } })
+    const token = issueToken(email, 'email')
+    res.setHeader('Set-Cookie', sessionCookie(token))
+    sendJson(res, 200, { token, user: { email, name: email.split('@')[0] } })
+    return
+  }
+
+  // ── auth: who am I (restores a session from the HttpOnly cookie on reload) ─────
+  if (req.method === 'GET' && url.pathname === '/api/auth/me') {
+    if (!caller) { sendJson(res, 401, { error: 'not signed in' }); return }
+    const name =
+      caller.method === 'wallet'
+        ? `${caller.subject.slice(0, 6)}...${caller.subject.slice(-4)}`
+        : caller.subject.split('@')[0]
+    sendJson(res, 200, { user: { email: caller.subject, name }, method: caller.method, verified: isVerified(caller) })
+    return
+  }
+  // ── auth: logout (clears the session cookie) ──────────────────────────────────
+  if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
+    res.setHeader('Set-Cookie', clearSessionCookie())
+    sendJson(res, 200, { ok: true })
     return
   }
 
@@ -604,7 +674,10 @@ const server = http.createServer(async (req, res) => {
     return
   }
   if (req.method === 'GET' && url.pathname === '/api/platform-agents') {
-    sendJson(res, 200, { agents: listPlatformAgents() })
+    // Scoped to the caller: the app lists/manages only the agents you own. No session,
+    // or a guest with none, gets an empty list (public discovery is /api/marketplace).
+    const owned = callerId ? listPlatformAgents().filter((a) => a.owner === callerId) : []
+    sendJson(res, 200, { agents: owned })
     return
   }
   // Anchor an existing platform agent on-chain (real ERC-8004 register, env-gated)
@@ -630,6 +703,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/agents/vault') {
     const agentId = url.searchParams.get('agentId') ?? ''
     if (!agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
+    if (denyRead(res, agentId, callerId)) return
     const r = await getAgentVault(agentId)
     if ('error' in r && typeof r.error === 'string') { sendJson(res, errStatus(r.error), r); return }
     sendJson(res, 200, r)
@@ -648,6 +722,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/agents/circle-wallet') {
     const agentId = url.searchParams.get('agentId') ?? ''
     if (!agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
+    if (denyRead(res, agentId, callerId)) return
     const r = await getAgentCircleWallet(agentId)
     if ('error' in r && typeof r.error === 'string') { sendJson(res, errStatus(r.error), r); return }
     sendJson(res, 200, r)
@@ -658,6 +733,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/agents/treasury') {
     const agentId = url.searchParams.get('agentId') ?? ''
     if (!agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
+    if (denyRead(res, agentId, callerId)) return
     const capParam = url.searchParams.get('cap')
     const cap = capParam !== null && Number.isFinite(Number(capParam)) ? Number(capParam) : undefined
     const r = await getAgentTreasury(agentId, cap)
@@ -719,6 +795,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/agents/policy') {
     const agentId = url.searchParams.get('agentId') ?? ''
     if (!agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
+    if (denyRead(res, agentId, callerId)) return
     const p = agentPolicy(agentId)
     sendJson(res, 'error' in p ? 404 : 200, p)
     return
@@ -754,7 +831,15 @@ const server = http.createServer(async (req, res) => {
     return
   }
   if (req.method === 'GET' && url.pathname === '/api/instructions') {
-    sendJson(res, 200, { instructions: listInstructions(url.searchParams.get('agentId') ?? undefined) })
+    // Owner-scoped: a specific agentId is gated to its owner; without one, return only
+    // the caller's own agents' payment history (never everyone's).
+    const agentId = url.searchParams.get('agentId') ?? undefined
+    if (agentId) {
+      if (denyRead(res, agentId, callerId)) return
+      sendJson(res, 200, { instructions: listInstructions(agentId) })
+    } else {
+      sendJson(res, 200, { instructions: listInstructionsForOwner(callerId) })
+    }
     return
   }
   if (req.method === 'POST' && url.pathname === '/api/instructions/approve') {

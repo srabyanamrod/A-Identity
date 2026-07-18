@@ -113,6 +113,9 @@ export async function apiFetch(path: string, init: ApiInit = {}): Promise<Respon
 
 function doFetch(path: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   return fetch(`${MCP_BASE}${path}`, {
+    // Send the HttpOnly session cookie on every call (same-origin in prod; credentialed
+    // CORS in dev) so auth no longer depends on a JS-readable token.
+    credentials: 'include',
     ...init,
     signal: init.signal ?? AbortSignal.timeout(timeoutMs),
   })
