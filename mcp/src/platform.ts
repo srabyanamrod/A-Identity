@@ -129,7 +129,7 @@ export type Instruction = {
   explorerUrl?: string
   /** Which layer settled or blocked this: our server pre-check, Circle's hosted
    *  policy engine (Agent Wallet), or the trustless on-chain vault. */
-  enforcedBy?: 'server' | 'circle-agent-stack' | 'onchain-vault'
+  enforcedBy?: 'server' | 'circle-agent-stack' | 'onchain-vault' | 'session-key'
   /** Set when the settlement was wrapped through Arc's `Memo` precompile: the indexed
    *  on-chain memo id (recomputable from the instruction id) and the decoded reason
    *  payload emitted on-chain. Lets the UI link to an auditable "why" on arcscan. */

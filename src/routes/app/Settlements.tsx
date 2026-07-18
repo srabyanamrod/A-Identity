@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowUpRight, CheckCircle2, Clock, ExternalLink, Link2, Receipt, Send, ShieldQuestion, Wallet } from 'lucide-react'
+import { ArrowUpRight, CheckCircle2, Clock, ExternalLink, KeyRound, Link2, Receipt, Send, ShieldQuestion, Wallet } from 'lucide-react'
 import { authHeaders } from '../../store/auth'
 import AutopilotPanel from '../../components/app/AutopilotPanel'
 import TrustOraclePanel from '../../components/app/TrustOraclePanel'
+import SessionKeyPanel from '../../components/app/SessionKeyPanel'
 import X402Panel from '../../components/app/X402Panel'
 import NanopayPanel from '../../components/app/NanopayPanel'
 import EscrowPanel from '../../components/app/EscrowPanel'
@@ -34,7 +35,7 @@ type Instruction = {
   policyNote: string
   txHash?: string
   explorerUrl?: string
-  enforcedBy?: 'server' | 'circle-agent-stack' | 'onchain-vault'
+  enforcedBy?: 'server' | 'circle-agent-stack' | 'onchain-vault' | 'session-key'
   /** On-chain Memo audit trail (Arc Memo precompile): the indexed memoId and the
    *  decoded "why" payload emitted alongside the USDC transfer. */
   memoId?: string
@@ -261,6 +262,11 @@ export default function Settlements() {
                           <Wallet size={10} /> Circle Agent Wallet
                         </span>
                       )}
+                      {ix.enforcedBy === 'session-key' && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#7342E2]/10 px-2 py-0.5 text-[10px] font-bold text-[#7342E2]">
+                          <KeyRound size={10} /> Session key
+                        </span>
+                      )}
                       {ix.memoId && (
                         <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
                           <Receipt size={10} /> Memo audit
@@ -359,6 +365,7 @@ export default function Settlements() {
 
       <AutopilotPanel />
       <TrustOraclePanel />
+      <SessionKeyPanel />
       <X402Panel />
       <NanopayPanel />
       <EscrowPanel />

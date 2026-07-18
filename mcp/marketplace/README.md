@@ -11,21 +11,25 @@ sell on OKX.AI (Agent #6271).
 
 ## Listing checklist (a Circle-account action — done once, by the account owner)
 
-Registering a service on `agents.circle.com` is an account/console action; it can't be done
-headlessly. Steps:
+**Reality check (researched 2026-07-19):** Circle does **not** publish a documented self-serve
+"submit your service" form or CLI command. `agents.circle.com` only exposes "Browse the marketplace"
+(buyer side); the `@circle-fin/cli` is buyer-side only (`circle services search/inspect/pay` — there
+is **no** `circle services publish`). So listing is **not** a headless step — it goes through Circle.
 
-1. **Install the Circle CLI** and sign in with the Circle account:
-   `npm install -g @circle-fin/cli` → `circle login`.
-2. **Accept the marketplace Terms** (show the live values, don't hardcode them):
-   `circle terms show --init --output json` → review → `circle terms accept --output json`.
-3. **Confirm the service is discoverable** — the manifest must resolve publicly:
-   `curl -s https://a-identity-asp.onrender.com/.well-known/agent.json | jq .`
-4. **Submit the listing** on `agents.circle.com/services` (web console) using the fields from
-   `circle-agent-marketplace.json`: service URL `https://a-identity-asp.onrender.com`, the four
-   tools + prices, x402 payment (USDC), and the provider identity (ERC-8004 Meridian #849980).
-5. **Verify it's searchable** once approved: `circle services search "trust oracle" --output json`
-   should return the service; `circle services inspect "https://a-identity-asp.onrender.com" --output json`
-   should return the manifest above.
+Our side is fully ready: the service is x402-compliant and serves an inspectable manifest at
+`https://a-identity-asp.onrender.com/.well-known/agent.json`.
+
+To get listed:
+
+1. Go to the **Circle / Encode hackathon Discord** (or the Circle Developer Discord) and request the
+   listing in the marketplace / support / sponsor channel. Paste the service details:
+   - Service URL: `https://a-identity-asp.onrender.com`
+   - Manifest: `https://a-identity-asp.onrender.com/.well-known/agent.json`
+   - Tools (USDC/x402): `verify_agent` $0.001 · `reputation_score` $0.002 · `risk_check` $0.005 · `agent_passport` $0.01
+   - Provider identity: ERC-8004 (Meridian #849980) on Arc testnet · app https://a-identity.xyz
+2. If the marketplace **auto-indexes** discoverable x402 services, ours is already ready — check with
+   `npm i -g @circle-fin/cli && circle login`, then `circle services search "trust oracle" --output json`.
+3. Once listed, verify: `circle services inspect "https://a-identity-asp.onrender.com" --output json`.
 
 ## Dogfooding it (already wired, no account needed)
 

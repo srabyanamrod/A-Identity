@@ -211,8 +211,21 @@ server. Grant it from **Permissions → On-chain Policy Vault → Session key**.
 
 Try it: `cd mcp && node --env-file=.env scripts/test-session.mjs` runs the full lifecycle on real
 Arc testnet — grant → pay within the window → the key expires → the agent's pay reverts → the owner
-extends → pays again → revoke → reverts. (The real-ERC-4337 / Pimlico-bundler session key is the
-next phase.)
+extends → pays again → revoke → reverts.
+
+**Real ERC-4337 session key (the standard AA primitive).** The same idea, expressed as an actual
+account-abstraction session key: the owner deploys a **Kernel (ERC-4337 v0.7) smart account** and
+grants the agent a **session key** scoped by standard permission policies — `toTimestampPolicy`
+(expiry), `toCallPolicy` (a payee allowlist + a per-tx cap). The agent then settles entirely on its
+own by signing a **UserOperation**; a payment outside the bounds is rejected by the account's policy
+validator **on-chain**, not a server. Runs on Arc testnet via a **Pimlico bundler** (Zerodev Kernel).
+→ `mcp/src/aa-wallet.ts` · credential `PIMLICO_API_KEY` (free at pimlico.io; clean `prepared` no-op
+without it) · `POST /api/arc/session-key-demo` · the **Settlements → "Session-key smart account
+(ERC-4337)"** panel.
+
+Try it: `cd mcp && node --env-file=.env scripts/test-aa-session.mjs` deploys a Kernel smart account,
+grants a session key (cap + allowlist + expiry), and proves it settles a real UserOp **within**
+bounds while an **out-of-bounds** payment is rejected on-chain by the policy validator.
 
 ### Circle Agent Wallet — hosted wallet-layer screening
 

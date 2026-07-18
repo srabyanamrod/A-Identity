@@ -61,6 +61,7 @@ import { runGatewayDemo, gatewayBalance } from './gateway.js'
 import { runCctpDemo } from './cctp.js'
 import { runAgentRun } from './autopilot.js'
 import { runTrustOracleDogfood } from './trust-oracle.js'
+import { runSessionKeyDemo } from './aa-wallet.js'
 import { randomBytes } from 'node:crypto'
 
 // Render/most hosts inject PORT; fall back to our own var, then the local default.
@@ -674,6 +675,18 @@ const server = http.createServer(async (req, res) => {
       amountUsd: cappedDemoUsd(body?.amountUsd, 0.05),
       budgetUsd: cappedDemoUsd(body?.budgetUsd, MAX_DEMO_USD),
     }))
+    return
+  }
+
+  // ── ERC-4337 session-key smart account (idea C2): deploy a Kernel SCA, grant a session
+  //    key scoped to cap/allowlist/expiry, and settle a REAL UserOp within bounds while an
+  //    out-of-bounds payment is rejected on-chain by the policy validator. Credential-gated
+  //    on PIMLICO_API_KEY (prepared without it).
+  if (req.method === 'POST' && url.pathname === '/api/arc/session-key-demo') {
+    const body = (await readBody(req).catch(() => null)) as { capUsd?: number; expirySeconds?: number } | null
+    const expirySeconds = typeof body?.expirySeconds === 'number' && Number.isFinite(body.expirySeconds)
+      ? Math.min(Math.max(body.expirySeconds, 60), 86400) : undefined
+    sendJson(res, 200, await runSessionKeyDemo({ capUsd: cappedDemoUsd(body?.capUsd, 1), expirySeconds }))
     return
   }
 
