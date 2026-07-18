@@ -56,6 +56,8 @@ import {
   listTasksForClient,
   listTasksForAgent,
   marketplaceCatalog,
+  agentManifest,
+  registerExternalAgent,
   type InstructionType,
 } from './platform.js'
 import { issueToken, verifyToken, isVerified } from './auth.js'
@@ -1066,6 +1068,36 @@ const server = http.createServer(async (req, res) => {
     } else {
       sendJson(res, 200, { tasks: listTasksForClient(callerId) })
     }
+    return
+  }
+
+  // ── Open ecosystem: per-agent manifest (AMP Discover) + external self-register ──
+  // Public manifest an external project / SDK reads to find + hire an agent.
+  if (req.method === 'GET' && url.pathname === '/api/v1/agents/manifest') {
+    const agentId = url.searchParams.get('agentId') ?? ''
+    if (!agentId) { sendJson(res, 400, { error: 'agentId required' }); return }
+    const m = agentManifest(agentId)
+    sendJson(res, 'error' in m ? errStatus(m.error) : 200, m)
+    return
+  }
+  // An external framework's agent self-registers (verified session; owner = caller). Returns
+  // the created agent, its manifest, and a KYA challenge to prove wallet control next.
+  if (req.method === 'POST' && url.pathname === '/api/v1/agents/register') {
+    const body = (await readBody(req).catch(() => null)) as {
+      name?: string; description?: string; category?: string
+      capabilities?: string[]; services?: { name: string; priceUsd: number; unit: string }[]
+      walletAddress?: string; endpoint?: string
+    } | null
+    if (!body?.name) { sendJson(res, 400, { error: 'name required' }); return }
+    if (body.walletAddress && !/^0x[0-9a-fA-F]{40}$/.test(body.walletAddress)) {
+      sendJson(res, 400, { error: 'walletAddress must be a 0x address' }); return
+    }
+    const r = registerExternalAgent({
+      name: body.name, description: body.description, category: body.category,
+      capabilities: body.capabilities, services: body.services,
+      walletAddress: body.walletAddress, endpoint: body.endpoint, owner: callerId,
+    })
+    sendJson(res, 'error' in r ? errStatus(r.error) : 201, r)
     return
   }
 

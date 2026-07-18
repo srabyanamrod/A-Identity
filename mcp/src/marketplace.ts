@@ -182,3 +182,63 @@ export function statusLabel(status: TaskStatus): string {
   }
   return labels[status]
 }
+
+// ── AMP "Discover": per-agent manifest ────────────────────────────────────────────
+//
+// The discovery primitive of the AMP layer (Discover -> Authorize -> Execute -> Settle):
+// a self-describing manifest an external project reads to find and hire an agent. Pure:
+// it formats an agent record + its reputation into the manifest, so it is unit-testable.
+
+/** The minimal agent shape the manifest needs (a subset of PlatformAgent). */
+export type ManifestAgent = {
+  id: string
+  onchainAgentId?: string
+  chainId: number
+  name: string
+  description: string
+  category: string
+  capabilities: string[]
+  walletAddress: string | null
+  kya: 'verified' | 'unverified'
+  onchain: 'queued' | 'registered'
+  endpoint?: string
+  services: { name: string; priceUsd: number; unit: string }[]
+}
+
+/**
+ * Build an agent's public manifest (AMP Discover). Includes its ERC-8004 identity (CAIP-10
+ * when anchored), services, reputation, and how to hire it. `hireable` is true only for a
+ * KYA-verified agent (the trusted-marketplace rule), so the manifest never invites a hire the
+ * server would reject. Relative URLs by default (baseUrl=''), so it works behind any host.
+ */
+export function buildAgentManifest(agent: ManifestAgent, reputationScore: number, baseUrl = '') {
+  const hireable = agent.kya === 'verified'
+  return {
+    protocol: 'a-identity/amp',
+    version: '1',
+    agent: {
+      id: agent.id,
+      erc8004: agent.onchainAgentId ? `eip155:${agent.chainId}:8004/${agent.onchainAgentId}` : null,
+      name: agent.name,
+      description: agent.description,
+      category: agent.category,
+      capabilities: agent.capabilities,
+      wallet: agent.walletAddress,
+      kya: agent.kya,
+      onchain: agent.onchain,
+      reputation: reputationScore,
+      endpoint: agent.endpoint ?? null,
+      hireable,
+    },
+    services: agent.services.map((s) => ({ name: s.name, priceUsd: s.priceUsd, unit: s.unit })),
+    amp: {
+      discover: `${baseUrl}/api/v1/agents/manifest?agentId=${agent.id}`,
+      authorize: 'permissions: daily cap + auto-approve line + human-on-the-loop for large payments',
+      execute: 'x402 / nanopayments per call; ERC-8183 escrow for tasks',
+      settle: `USDC on Arc (eip155:${agent.chainId}), sub-second finality`,
+    },
+    hire: hireable
+      ? { method: 'POST', endpoint: `${baseUrl}/api/marketplace/hire`, body: { agentId: agent.id, service: '<service name>', priceUsd: '<amount>' } }
+      : null,
+  }
+}

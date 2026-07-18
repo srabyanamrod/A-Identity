@@ -30,7 +30,7 @@ import { computeAgentReputation } from './reputation.js'
 import {
   type Task, type TaskStatus, type Review,
   canTransition, normalizePriceUsd, normalizeDeadlineHours, deadlineFrom,
-  sanitizeRating, aggregateRating,
+  sanitizeRating, aggregateRating, buildAgentManifest,
 } from './marketplace.js'
 
 // ── types ─────────────────────────────────────────────────────────────────────
@@ -55,6 +55,8 @@ export type PlatformAgent = {
   capabilities: string[]
   /** What this agent sells on the marketplace (hire targets). */
   services: Service[]
+  /** Where the external agent is reachable (declared at register; shown in its manifest). */
+  endpoint?: string
   permissions: Permissions
   walletAddress: string | null
   chain: 'arc'
@@ -275,6 +277,7 @@ export function createAgent(input: {
   services?: Service[]
   permissions: Partial<Permissions>
   walletAddress?: string
+  endpoint?: string
   owner?: string
 }): PlatformAgent {
   const permissions: Permissions = {
@@ -286,17 +289,21 @@ export function createAgent(input: {
     frozen: input.permissions.frozen ?? false,
   }
 
-  // Services the agent sells on the marketplace. Default: one per capability at
-  // a nominal price, so a fresh agent is immediately hireable in Agent House.
-  const services: Service[] =
-    input.services && input.services.length > 0
-      ? input.services
-      : input.capabilities.map((c) => ({ name: c, priceUsd: 1, unit: 'per action' }))
-
   // Bound stored strings/arrays so a large registration can't balloon the single
   // persisted state blob (which is serialized in full on every save).
   const clamp = (s: string, n: number) => (typeof s === 'string' ? s.slice(0, n) : '')
   const boundedCaps = input.capabilities.slice(0, 50).map((c) => clamp(String(c), 200))
+
+  // Services the agent sells on the marketplace. Default: one per capability at a nominal
+  // price, so a fresh agent is immediately hireable. Client-provided services are bounded
+  // (count + name/price/unit) so a self-register can't balloon the persisted state blob.
+  const services: Service[] =
+    input.services && input.services.length > 0
+      ? input.services
+          .slice(0, 20)
+          .map((s) => ({ name: clamp(String(s?.name ?? ''), 200), priceUsd: normalizePriceUsd(s?.priceUsd), unit: clamp(String(s?.unit ?? 'per action'), 40) || 'per action' }))
+          .filter((s) => s.name)
+      : boundedCaps.map((c) => ({ name: c, priceUsd: 1, unit: 'per action' }))
 
   const agent: PlatformAgent = {
     id: id('agent'),
@@ -305,6 +312,7 @@ export function createAgent(input: {
     category: clamp(input.category, 100),
     capabilities: boundedCaps,
     services,
+    endpoint: input.endpoint ? clamp(String(input.endpoint), 500) : undefined,
     permissions,
     walletAddress: input.walletAddress ?? null,
     chain: 'arc',
@@ -1552,6 +1560,79 @@ export function marketplaceCatalog() {
   )
   services.sort((a, b) => b.rating - a.rating || b.reviews - a.reviews || b.completed - a.completed)
   return { services, total: services.length }
+}
+
+// ── open ecosystem: per-agent manifest (AMP Discover) + external self-register ─────
+
+/**
+ * The public per-agent manifest (AMP Discover): ERC-8004 identity + services + how to hire,
+ * with reputation from real activity. This is what an external project or the SDK reads to
+ * find and hire an agent. Public read.
+ */
+export function agentManifest(agentId: string, baseUrl = ''): ReturnType<typeof buildAgentManifest> | { error: string } {
+  const agent = state.agents.find((a) => a.id === agentId)
+  if (!agent) return { error: 'Unknown agent' }
+  return buildAgentManifest(
+    {
+      id: agent.id,
+      onchainAgentId: agent.onchainAgentId,
+      chainId: agent.chainId,
+      name: agent.name,
+      description: agent.description,
+      category: agent.category,
+      capabilities: agent.capabilities,
+      walletAddress: agent.walletAddress,
+      kya: agent.kya,
+      onchain: agent.onchain,
+      endpoint: agent.endpoint,
+      services: agent.services,
+    },
+    repOf(agent).score,
+    baseUrl,
+  )
+}
+
+/**
+ * The open front door: an external framework's agent self-registers. Creates the agent
+ * (owner = the verified caller), records its endpoint + wallet, and hands back the manifest
+ * plus a KYA challenge to prove wallet control next (only a KYA-verified agent is hireable).
+ * Honest by design: nothing is verified until the wallet signature is proven.
+ */
+export function registerExternalAgent(
+  input: {
+    name?: string
+    description?: string
+    category?: string
+    capabilities?: string[]
+    services?: Service[]
+    walletAddress?: string
+    endpoint?: string
+    owner?: string
+  },
+  baseUrl = '',
+): { agent: PlatformAgent; manifest: unknown; manifestUrl: string; kya: unknown } | { error: string } {
+  if (!input.name || !String(input.name).trim()) return { error: 'name required' }
+  const agent = createAgent({
+    name: input.name,
+    description: input.description ?? '',
+    category: input.category ?? 'Other',
+    capabilities: Array.isArray(input.capabilities) ? input.capabilities : [],
+    services: input.services,
+    permissions: {},
+    walletAddress: input.walletAddress,
+    endpoint: input.endpoint,
+    owner: input.owner,
+  })
+  const manifestUrl = `${baseUrl}/api/v1/agents/manifest?agentId=${agent.id}`
+  // The next step to become hireable: prove wallet control (KYA).
+  let kya: unknown = { status: 'unverified', nextStep: 'Assign a wallet, then POST /api/agents/kya/challenge to prove control.' }
+  if (agent.walletAddress) {
+    const ch = startKyaChallenge(agent.id, input.owner)
+    kya = 'error' in ch
+      ? { status: 'unverified', nextStep: ch.error }
+      : { status: 'unverified', challenge: ch, nextStep: 'Sign this message with the agent wallet, then POST /api/agents/kya/verify.' }
+  }
+  return { agent, manifest: agentManifest(agent.id, baseUrl), manifestUrl, kya }
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

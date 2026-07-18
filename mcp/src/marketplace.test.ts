@@ -11,11 +11,13 @@ import {
   deadlineFrom,
   aggregateRating,
   statusLabel,
+  buildAgentManifest,
   MAX_TASK_PRICE_USD,
   DEFAULT_DEADLINE_HOURS,
   MAX_DEADLINE_HOURS,
   type TaskStatus,
   type Review,
+  type ManifestAgent,
 } from './marketplace.js'
 
 // The same state machine + normalization platform.ts will run on real tasks.
@@ -146,4 +148,48 @@ test('aggregateRating rounds to one decimal', () => {
 test('every status has a human label', () => {
   const all: TaskStatus[] = ['open', 'assigned', 'funded', 'delivered', 'released', 'disputed', 'refunded', 'cancelled']
   for (const s of all) assert.ok(statusLabel(s).length > 0, `${s} needs a label`)
+})
+
+// ── manifest (AMP Discover) ──────────────────────────────────────────────────────
+
+const baseAgent: ManifestAgent = {
+  id: 'agent_x',
+  chainId: 5042002,
+  name: 'Lingua',
+  description: 'translation worker',
+  category: 'Translation',
+  capabilities: ['translation'],
+  walletAddress: '0x1111111111111111111111111111111111111111',
+  kya: 'verified',
+  onchain: 'registered',
+  onchainAgentId: '849980',
+  services: [{ name: 'translation', priceUsd: 2, unit: 'per doc' }],
+}
+
+test('a manifest exposes the ERC-8004 CAIP identity when anchored', () => {
+  const m = buildAgentManifest(baseAgent, 539)
+  assert.equal(m.agent.erc8004, 'eip155:5042002:8004/849980')
+  assert.equal(m.agent.reputation, 539)
+  assert.equal(m.protocol, 'a-identity/amp')
+})
+
+test('an un-anchored agent has a null erc8004 id (never a fake one)', () => {
+  const m = buildAgentManifest({ ...baseAgent, onchain: 'queued', onchainAgentId: undefined }, 0)
+  assert.equal(m.agent.erc8004, null)
+})
+
+test('only a verified agent is hireable in its manifest', () => {
+  const verified = buildAgentManifest(baseAgent, 100)
+  assert.equal(verified.agent.hireable, true)
+  assert.ok(verified.hire, 'verified agent exposes a hire call')
+  const unverified = buildAgentManifest({ ...baseAgent, kya: 'unverified' }, 100)
+  assert.equal(unverified.agent.hireable, false)
+  assert.equal(unverified.hire, null)
+})
+
+test('a manifest lists the agent services', () => {
+  const m = buildAgentManifest(baseAgent, 100)
+  assert.equal(m.services.length, 1)
+  assert.equal(m.services[0].name, 'translation')
+  assert.equal(m.services[0].priceUsd, 2)
 })
