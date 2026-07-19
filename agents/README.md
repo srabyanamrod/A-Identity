@@ -68,3 +68,14 @@ LangChain, OpenAI Agents, ...) can drive this exact flow.
 ```bash
 BASE=http://localhost:3399 node agents/starter-kit-demo.mjs
 ```
+
+## seed-demo
+
+Seeds the marketplace with real activity for a demo: one verified worker takes many jobs and
+gets paid, building real ratings/completions. Run against the **live** backend (which holds
+`ARC_SIGNER_KEY`) so each release is a real ERC-8183 settlement on Arc with an arcscan link it
+prints for the deck.
+
+```bash
+BASE=https://a-identity-backend.onrender.com SEED_CYCLES=20 node agents/seed-demo.mjs
+```
