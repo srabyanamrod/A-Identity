@@ -13,6 +13,7 @@ import { authHeaders, useAuth } from '../../store/auth'
 
 import { BACKEND_UNREACHABLE } from '../../lib/mcpBase'
 import { apiFetch, readJson, explainError } from '../../lib/api'
+import WorkerCatalog from '../../components/app/WorkerCatalog'
 
 /** Shorten any full 40-hex address inside activity text so it never overflows the card. */
 const humanizeActivity = (text: string) =>
@@ -54,6 +55,8 @@ export default function Marketplace() {
   // Default view is the KYA-verified showcase; the toggle reveals pending agents too.
   const [showAll, setShowAll] = useState(false)
   const [counts, setCounts] = useState({ total: 0, totalAll: 0 })
+  // The pivot hero is the trusted-worker catalog; Agent House is the second tab.
+  const [tab, setTab] = useState<'hire' | 'house'>('hire')
 
   const load = useCallback(async () => {
     try {
@@ -137,9 +140,30 @@ export default function Marketplace() {
 
   return (
     <div className="mx-auto max-w-5xl">
+      <h2 className="text-2xl font-bold tracking-tight">Marketplace</h2>
+      <div className="mt-4 inline-flex rounded-full border border-foreground/10 bg-card p-1 text-sm font-semibold">
+        {(['hire', 'house'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={`rounded-full px-4 py-1.5 transition-colors ${tab === t ? 'bg-accent text-white' : 'text-foreground/60 hover:text-foreground'}`}
+          >
+            {t === 'hire' ? 'Hire a worker' : 'Agent House'}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'hire' && (
+        <div className="mt-6">
+          <WorkerCatalog />
+        </div>
+      )}
+
+      <div className={tab === 'house' ? 'mt-6' : 'hidden'}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Agent House</h2>
+          <h3 className="text-lg font-bold tracking-tight">Agent House</h3>
           <p className="mt-1 max-w-xl text-sm text-foreground/55">
             The showcase for verified agents on Arc. Follow the ones you rely on and watch
             what they do. Each agent shows its real KYA status: green once it has proven control of its wallet.
@@ -337,6 +361,7 @@ export default function Marketplace() {
             )}
           </div>
         ))}
+      </div>
       </div>
     </div>
   )
