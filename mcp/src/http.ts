@@ -724,10 +724,10 @@ const server = http.createServer(async (req, res) => {
   //    out-of-bounds payment is rejected on-chain by the policy validator. Credential-gated
   //    on PIMLICO_API_KEY (prepared without it).
   if (req.method === 'POST' && url.pathname === '/api/arc/session-key-demo') {
-    const body = (await readBody(req).catch(() => null)) as { capUsd?: number; expirySeconds?: number } | null
+    const body = (await readBody(req).catch(() => null)) as { capUsd?: number; expirySeconds?: number; sponsorGas?: boolean } | null
     const expirySeconds = typeof body?.expirySeconds === 'number' && Number.isFinite(body.expirySeconds)
       ? Math.min(Math.max(body.expirySeconds, 60), 86400) : undefined
-    sendJson(res, 200, await runSessionKeyDemo({ capUsd: cappedDemoUsd(body?.capUsd, 1), expirySeconds }))
+    sendJson(res, 200, await runSessionKeyDemo({ capUsd: cappedDemoUsd(body?.capUsd, 1), expirySeconds, sponsorGas: body?.sponsorGas === true }))
     return
   }
 

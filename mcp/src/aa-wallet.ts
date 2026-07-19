@@ -55,6 +55,7 @@ async function pimlicoFees(env: NodeJS.ProcessEnv) {
 async function buildSessionAccount(
   env: NodeJS.ProcessEnv,
   scope: { capUsd: number; allowlistTo: `0x${string}`; validUntil: number },
+  sponsor = false,
 ) {
   const { createKernelAccount, createKernelAccountClient } = await import('@zerodev/sdk')
   const { getEntryPoint, KERNEL_V3_1 } = await import('@zerodev/sdk/constants')
@@ -107,11 +108,21 @@ async function buildSessionAccount(
     entryPoint, kernelVersion,
     plugins: { sudo: sudoValidator, regular: permission },
   })
+  // Paymaster (Gas Station / gas sponsorship): when `sponsor`, route the UserOp's gas through
+  // Pimlico's ERC-7677 paymaster (viem's createPaymasterClient — no `permissionless` dependency),
+  // so the agent's session key pays ZERO gas. Requires a Pimlico sponsorship policy on the
+  // account; without one, use the self-funded path instead (see runSessionKeyDemo).
+  let paymaster: unknown
+  if (sponsor) {
+    const { createPaymasterClient } = await import('viem/account-abstraction')
+    paymaster = createPaymasterClient({ transport: http(bundlerUrl(env)) })
+  }
   const kernelClient = createKernelAccountClient({
     account, chain: arc, bundlerTransport: http(bundlerUrl(env)),
+    ...(paymaster ? { paymaster: paymaster as never } : {}),
     userOperation: { estimateFeesPerGas: async () => pimlicoFees(env) },
   })
-  return { account, kernelClient, owner, sessionKey, publicClient }
+  return { account, kernelClient, owner, sessionKey, publicClient, sponsored: sponsor }
 }
 
 type Attempt = { label: string; to: string; amountUsd: number; settled: boolean; txHash?: string; explorerUrl?: string; rejectedReason?: string }
@@ -123,7 +134,7 @@ type Attempt = { label: string; to: string; amountUsd: number; settled: boolean;
  * the policy validator, not a server). Prepared without a bundler key.
  */
 export async function runSessionKeyDemo(
-  input: { capUsd?: number; expirySeconds?: number } = {},
+  input: { capUsd?: number; expirySeconds?: number; sponsorGas?: boolean } = {},
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<
   | { executed: false; reason: string }
@@ -132,6 +143,7 @@ export async function runSessionKeyDemo(
       sca: string
       sessionKey: string
       scopedTo: { capUsd: number; allowlist: string; expiresAt: number }
+      gasSponsored: boolean
       funded: { amountUsd: number; txHash?: string } | null
       attempts: Attempt[]
     }
@@ -150,19 +162,23 @@ export async function runSessionKeyDemo(
   const owner = privateKeyToAccount(env.ARC_SIGNER_KEY as `0x${string}`)
   const allowlistTo = owner.address // the session key may only pay THIS payee, up to the cap
 
-  const { account, kernelClient, sessionKey, publicClient } = await buildSessionAccount(env, { capUsd, allowlistTo, validUntil })
+  const sponsor = input.sponsorGas === true
+  const { account, kernelClient, sessionKey, publicClient, sponsored } = await buildSessionAccount(env, { capUsd, allowlistTo, validUntil }, sponsor)
   const sca = account.address
 
   // Fund the SCA with a little native USDC for its own UserOp gas (from the owner EOA).
   const { createWalletClient, http: vhttp, defineChain } = await import('viem')
   const arc = defineChain({ id: ARC_CHAIN_ID, name: 'Arc Testnet', nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 18 }, rpcUrls: { default: { http: AA_RPCS } } })
   const wallet = createWalletClient({ account: owner, chain: arc, transport: vhttp(AA_RPCS[0]) })
+  // With a paymaster the SCA needs no native gas; only fund it on the self-funded path.
   let funded: { amountUsd: number; txHash?: string } | null = null
-  const bal = await publicClient.getBalance({ address: sca })
-  if (bal < parseUnits('0.2', 18)) {
-    const fundTx = await wallet.sendTransaction({ to: sca, value: parseUnits('0.3', 18) })
-    await publicClient.waitForTransactionReceipt({ hash: fundTx })
-    funded = { amountUsd: 0.3, txHash: fundTx }
+  if (!sponsored) {
+    const bal = await publicClient.getBalance({ address: sca })
+    if (bal < parseUnits('0.2', 18)) {
+      const fundTx = await wallet.sendTransaction({ to: sca, value: parseUnits('0.3', 18) })
+      await publicClient.waitForTransactionReceipt({ hash: fundTx })
+      funded = { amountUsd: 0.3, txHash: fundTx }
+    }
   }
 
   const transferCall = (to: `0x${string}`, amountUsd: number) => account.encodeCalls([{
@@ -199,6 +215,7 @@ export async function runSessionKeyDemo(
     sca,
     sessionKey: sessionKey.address,
     scopedTo: { capUsd, allowlist: allowlistTo, expiresAt: validUntil },
+    gasSponsored: sponsored,
     funded,
     attempts,
   }
