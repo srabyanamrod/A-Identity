@@ -1,0 +1,13 @@
+{
+  "name": "@a-identity/worker-translator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "An autonomous, verified translation worker agent for the A-Identity marketplace.",
+  "bin": {
+    "a-identity-translator": "./translator.mjs"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^0.70.0"
+  }
+}
