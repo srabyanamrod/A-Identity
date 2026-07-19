@@ -23,6 +23,7 @@ import {
   deployPolicyVault, policyPay, policyOwnerPay, readPolicyVault,
   policySetPolicy, policySetFrozen, policySetAllowed, policySetSessionExpiry,
   recordValidationOnchain, readValidation, runEscrowJobDemo,
+  fundEscrowOnchain, completeEscrowOnchain, rejectJobOnchain,
 } from './arc-contracts.js'
 import { createAgentWallet, circlePay, readCircleWallet } from './circle-agent.js'
 import { previewTreasury, startAutoYield, type TreasuryPreview, type TreasuryExecution } from './treasury.js'
@@ -1357,18 +1358,41 @@ function transitionTask(task: Task, to: TaskStatus): boolean {
 }
 
 /**
+ * Best-effort: lock a task's escrow ON-CHAIN at hire via the granular ERC-8183 flow (createJob
+ * -> setBudget -> approve -> fund). On success the task carries a real jobId + fund tx (funds
+ * genuinely held in the contract, verifiable on arcscan). ANY failure (no key, RPC, revert)
+ * leaves the task off-chain funded so a hire never breaks. This is the "funds lock on-chain at
+ * hire" path; the platform signer is the escrow party in this build (per-party wallet signing is
+ * the remaining roadmap piece). Release completes it via completeEscrowOnchain.
+ */
+async function tryOnchainFund(task: Task, agent?: PlatformAgent): Promise<void> {
+  try {
+    const esc = await fundEscrowOnchain({ budgetUsd: task.priceUsd, description: `A-Identity marketplace task ${task.id}: ${task.service}` })
+    if (esc.executed) {
+      task.jobId = esc.jobId
+      const fund = esc.steps.find((s) => s.step === 'fund') ?? esc.steps[esc.steps.length - 1]
+      task.escrowTx = fund?.txHash
+      task.escrowExplorer = fund?.explorerUrl
+      if (agent) pushActivity(agent, `Escrow locked on-chain at hire (ERC-8183 job ${esc.jobId}, tx ${short(task.escrowTx ?? '')})`)
+    }
+  } catch {
+    /* off-chain funded fallback — never blocks the hire */
+  }
+}
+
+/**
  * Hire a verified worker agent. Trusted-marketplace rule: only a KYA-verified agent can be
  * hired. Creates a task in 'funded' (the client commits; the ERC-8183 escrow settles on
  * release). The price is clamped to the testnet settlement cap so the shared signer is safe.
  */
-export function hireAgent(input: {
+export async function hireAgent(input: {
   agentId: string
   service: string
   priceUsd: number
   description?: string
   deadlineHours?: number
   client?: string
-}): Task | { error: string } {
+}): Promise<Task | { error: string }> {
   if (!input.client) return { error: 'Forbidden: sign in with a verified session to hire' }
   const agent = state.agents.find((a) => a.id === input.agentId)
   if (!agent) return { error: 'Unknown agent' }
@@ -1395,7 +1419,15 @@ export function hireAgent(input: {
     deadlineAt: deadlineFrom(now, normalizeDeadlineHours(input.deadlineHours)),
   }
   state.tasks.push(task)
-  pushActivity(agent, `Hired for "${service}" ($${priceUsd.toFixed(2)}); escrow committed (task ${task.id})`)
+  // Best-effort: lock the escrow on-chain at hire (real ERC-8183 fund). Falls back to
+  // off-chain funded on any failure, so a hire never breaks.
+  await tryOnchainFund(task, agent)
+  pushActivity(
+    agent,
+    task.jobId
+      ? `Hired for "${service}" ($${priceUsd.toFixed(2)}); escrow locked on-chain (task ${task.id})`
+      : `Hired for "${service}" ($${priceUsd.toFixed(2)}); escrow committed (task ${task.id})`,
+  )
   save(state)
   return task
 }
@@ -1459,7 +1491,7 @@ export function bidOnTask(taskId: string, input: { agentId: string; priceUsd: nu
 }
 
 /** The client accepts a bid: the task is assigned to that agent and its escrow is committed. */
-export function acceptBid(taskId: string, agentId: string, caller?: string): Task | { error: string } {
+export async function acceptBid(taskId: string, agentId: string, caller?: string): Promise<Task | { error: string }> {
   const task = state.tasks.find((t) => t.id === taskId)
   if (!task) return { error: 'Unknown task' }
   if (task.client !== caller) return { error: 'Forbidden: only the client who posted can accept a bid' }
@@ -1472,7 +1504,8 @@ export function acceptBid(taskId: string, agentId: string, caller?: string): Tas
   task.priceUsd = bid.priceUsd
   transitionTask(task, 'assigned')
   transitionTask(task, 'funded')
-  pushActivity(agent, `Won open task ${task.id} at $${bid.priceUsd.toFixed(2)}; escrow committed`)
+  await tryOnchainFund(task, agent) // lock the escrow on-chain on accept (best-effort)
+  pushActivity(agent, `Won open task ${task.id} at $${bid.priceUsd.toFixed(2)}; escrow ${task.jobId ? 'locked on-chain' : 'committed'}`)
   save(state)
   return task
 }
@@ -1517,6 +1550,25 @@ export async function releaseTask(
   if (task.client !== caller) return { error: 'Forbidden: only the hiring client can release' }
   if (!canTransition(task.status, 'released')) return { error: `Cannot release from status ${task.status}` }
   const agent = state.agents.find((a) => a.id === task.agentId)
+
+  // Escrow was locked on-chain at hire (has a jobId): complete THAT job on-chain, no new job.
+  if (task.jobId) {
+    const done = await completeEscrowOnchain(BigInt(task.jobId))
+    if (!done.executed) {
+      return { error: `On-chain escrow release failed (${done.reason}); the funds remain in escrow — retry, or dispute to refund.` }
+    }
+    const c = done.steps.find((s) => s.step === 'complete') ?? done.steps[done.steps.length - 1]
+    task.releaseTx = c?.txHash
+    task.escrowExplorer = c?.explorerUrl
+    task.settlement = 'onchain'
+    if (input.rating !== undefined || (typeof input.review === 'string' && input.review.trim())) {
+      task.review = { by: caller!, rating: sanitizeRating(input.rating ?? 5), text: String(input.review ?? '').slice(0, 1000), at: new Date().toISOString() }
+    }
+    transitionTask(task, 'released')
+    if (agent) pushActivity(agent, `Task ${task.id} released: escrow completed on-chain (job ${task.jobId}, tx ${short(task.releaseTx ?? '')})`)
+    save(state)
+    return task
+  }
 
   const escrow = await runEscrowJobDemo({
     budgetUsd: task.priceUsd,
@@ -1567,6 +1619,21 @@ export async function disputeTask(taskId: string, reason: string, caller?: strin
   if (task.client !== caller) return { error: 'Forbidden: only the hiring client can dispute' }
   if (!canTransition(task.status, 'refunded')) return { error: `Cannot dispute from status ${task.status}` }
   const agent = state.agents.find((a) => a.id === task.agentId)
+
+  // Escrow locked on-chain at hire: reject the job on-chain (refunds the client in the same tx).
+  if (task.jobId) {
+    const rej = await rejectJobOnchain(BigInt(task.jobId), String(reason ?? '').slice(0, 200))
+    if (!rej.executed) {
+      return { error: `On-chain dispute failed (${rej.reason}); retry.` }
+    }
+    task.refundTx = rej.txHash
+    task.escrowExplorer = rej.explorerUrl
+    task.settlement = 'onchain'
+    transitionTask(task, 'refunded')
+    if (agent) pushActivity(agent, `Task ${task.id} disputed: escrow refunded on-chain (tx ${short(task.refundTx ?? '')})`)
+    save(state)
+    return task
+  }
 
   const escrow = await runEscrowJobDemo({
     budgetUsd: task.priceUsd,

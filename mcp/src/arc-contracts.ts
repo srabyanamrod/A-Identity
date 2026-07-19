@@ -79,6 +79,17 @@ export const claimJobRefundOnchain = (jobId: bigint, env: NodeJS.ProcessEnv = pr
 export const readJobOnchain = (jobId: bigint, env: NodeJS.ProcessEnv = process.env) =>
   arc.readJob(jobId, env)
 
+/** Lock a task's escrow ON-CHAIN at hire (createJob -> setBudget -> approve -> fund). Returns
+ *  the ERC-8183 jobId. Prepared without a key. */
+export const fundEscrowOnchain = (
+  input: { budgetUsd?: number; description?: string },
+  env: NodeJS.ProcessEnv = process.env,
+) => arc.fundEscrow(input, env)
+
+/** Release a funded escrow (submit -> complete), paying the provider. Prepared without a key. */
+export const completeEscrowOnchain = (jobId: bigint, env: NodeJS.ProcessEnv = process.env) =>
+  arc.completeEscrow(jobId, env)
+
 /** Settle a payment in real USDC on Arc (ERC-20 transfer). Prepared without a key. */
 export const payUsdcOnchain = (to: string, amountUsd: number, env: NodeJS.ProcessEnv = process.env) =>
   arc.payUsdc(to, amountUsd, env)

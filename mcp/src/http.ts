@@ -1027,7 +1027,7 @@ const server = http.createServer(async (req, res) => {
       | null
     if (!body?.agentId || !body?.service) { sendJson(res, 400, { error: 'agentId and service required' }); return }
     if (!validAmount(body.priceUsd, 1000)) { sendJson(res, 400, { error: 'priceUsd must be a finite number between 0 and 1000' }); return }
-    const t = hireAgent({
+    const t = await hireAgent({
       agentId: body.agentId, service: body.service, priceUsd: body.priceUsd,
       description: body.description, deadlineHours: body.deadlineHours, client: callerId,
     })
@@ -1093,7 +1093,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/marketplace/accept-bid') {
     const body = (await readBody(req).catch(() => null)) as { taskId?: string; agentId?: string } | null
     if (!body?.taskId || !body?.agentId) { sendJson(res, 400, { error: 'taskId and agentId required' }); return }
-    const t = acceptBid(body.taskId, body.agentId, callerId)
+    const t = await acceptBid(body.taskId, body.agentId, callerId)
     sendJson(res, 'error' in t ? errStatus(t.error) : 200, t)
     return
   }

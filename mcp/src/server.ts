@@ -218,7 +218,7 @@ export function buildServer(data: ServerData = {}): McpServer {
           description: z.string().optional(),
         },
       },
-      async ({ agentId, service, priceUsd, description }) => json(mp.hire({ agentId, service, priceUsd, description })),
+      async ({ agentId, service, priceUsd, description }) => json(await mp.hire({ agentId, service, priceUsd, description })),
     )
 
     server.registerTool(

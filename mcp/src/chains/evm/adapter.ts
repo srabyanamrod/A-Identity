@@ -334,6 +334,89 @@ export function createEvmAdapter(chain: ChainDescriptor) {
     }
   }
 
+  // ── granular escrow: fund at hire, complete at release (real on-chain lock at hire) ──
+  type EscStep = { step: string; txHash: string; explorerUrl: string }
+
+  /**
+   * Lock a task's escrow ON-CHAIN at hire: createJob -> setBudget -> approve -> fund. The USDC
+   * is genuinely held in the ERC-8183 contract after this (verifiable on arcscan). The platform
+   * signer is the client/provider/evaluator in this build (per-party wallet signing is roadmap).
+   * Prepared without a key; a reverted step returns { reverted } without a false success.
+   */
+  async function fundEscrow(
+    input: { budgetUsd?: number; description?: string },
+    env: NodeJS.ProcessEnv = process.env,
+  ): Promise<
+    | { executed: false; reason: string }
+    | { executed: false; reverted: true; reason: string; failedAt?: string }
+    | { executed: true; jobId: string; budgetUsd: number; steps: EscStep[] }
+  > {
+    const budgetUsd = input.budgetUsd ?? 0.05
+    const description = input.description ?? 'A-Identity marketplace escrow'
+    const signer = await walletClient(env)
+    if (!signer) return { executed: false, reason: NO_KEY }
+    const { parseEventLogs } = await import('viem')
+    const client = await publicClient(env)
+    const me = signer.account.address
+    const budget = usdcUnits(chain, budgetUsd)
+    const empty = '0x' as const
+    const steps: EscStep[] = []
+    const record = async (step: string, hash: Hex) => {
+      const r = await client.waitForTransactionReceipt({ hash })
+      if (r.status !== 'success') throw new Error(`${step} reverted on-chain`)
+      steps.push({ step, txHash: hash, explorerUrl: tx(hash) })
+    }
+    try {
+      const expiredAt = BigInt(Math.floor(Date.now() / 1000) + 24 * 3600)
+      const createHash = await signer.client.writeContract({
+        address: agenticCommerce, abi: COMMERCE_ABI, functionName: 'createJob', args: [me, me, expiredAt, description, ZERO_ADDRESS],
+      })
+      const receipt = await client.waitForTransactionReceipt({ hash: createHash })
+      if (receipt.status !== 'success') throw new Error('createJob reverted on-chain')
+      steps.push({ step: 'createJob', txHash: createHash, explorerUrl: tx(createHash) })
+      const logs = parseEventLogs({ abi: COMMERCE_ABI, eventName: 'JobCreated', logs: receipt.logs })
+      const jobId = (logs[0]?.args as { jobId?: bigint })?.jobId
+      if (jobId === undefined) return { executed: false, reverted: true, reason: 'could not parse jobId from JobCreated', failedAt: 'createJob' }
+      await record('setBudget', await signer.client.writeContract({ address: agenticCommerce, abi: COMMERCE_ABI, functionName: 'setBudget', args: [jobId, budget, empty] }))
+      await record('approve(USDC)', await signer.client.writeContract({ address: usdc, abi: ERC20_ABI, functionName: 'approve', args: [agenticCommerce, budget] }))
+      await record('fund', await signer.client.writeContract({ address: agenticCommerce, abi: COMMERCE_ABI, functionName: 'fund', args: [jobId, empty] }))
+      return { executed: true, jobId: jobId.toString(), budgetUsd, steps }
+    } catch (err) {
+      return { executed: false, reverted: true, reason: await revertReason(err), failedAt: ['createJob', 'setBudget', 'approve(USDC)', 'fund'][steps.length] }
+    }
+  }
+
+  /** Release a funded escrow: submit -> complete, paying the provider. The counterpart to
+   *  fundEscrow. Prepared without a key; a reverted step returns { reverted }. */
+  async function completeEscrow(
+    jobId: bigint,
+    env: NodeJS.ProcessEnv = process.env,
+  ): Promise<
+    | { executed: false; reason: string }
+    | { executed: false; reverted: true; reason: string }
+    | { executed: true; steps: EscStep[]; status: string }
+  > {
+    const signer = await walletClient(env)
+    if (!signer) return { executed: false, reason: NO_KEY }
+    const { keccak256, toHex } = await import('viem')
+    const client = await publicClient(env)
+    const empty = '0x' as const
+    const steps: EscStep[] = []
+    const record = async (step: string, hash: Hex) => {
+      const r = await client.waitForTransactionReceipt({ hash })
+      if (r.status !== 'success') throw new Error(`${step} reverted on-chain`)
+      steps.push({ step, txHash: hash, explorerUrl: tx(hash) })
+    }
+    try {
+      await record('submit', await signer.client.writeContract({ address: agenticCommerce, abi: COMMERCE_ABI, functionName: 'submit', args: [jobId, keccak256(toHex(`a-identity:deliverable:${jobId}`)), empty] }))
+      await record('complete', await signer.client.writeContract({ address: agenticCommerce, abi: COMMERCE_ABI, functionName: 'complete', args: [jobId, keccak256(toHex(`a-identity:approved:${jobId}`)), empty] }))
+      const job = (await client.readContract({ address: agenticCommerce, abi: COMMERCE_ABI, functionName: 'getJob', args: [jobId] })) as { status: number }
+      return { executed: true, steps, status: JOB_STATUS[Number(job.status)] ?? String(job.status) }
+    } catch (err) {
+      return { executed: false, reverted: true, reason: await revertReason(err) }
+    }
+  }
+
   async function payUsdc(to: string, amountUsd: number, env: NodeJS.ProcessEnv = process.env): Promise<Prepared | Executed> {
     const amount = usdcUnits(chain, amountUsd)
     const signer = await walletClient(env)
@@ -674,6 +757,8 @@ export function createEvmAdapter(chain: ChainDescriptor) {
     rejectJob,
     claimJobRefund,
     readJob,
+    fundEscrow,
+    completeEscrow,
     payUsdc,
     payUsdcWithMemo,
     payUsdcBatch,

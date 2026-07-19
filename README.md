@@ -49,10 +49,12 @@ passport + catalog + manifest) → **Authorize** (spend caps + human-on-the-loop
 (x402 + Nanopayments + ERC-8183 escrow) → **Settle** (USDC on Arc, sub-second; Gateway/CCTP
 cross-chain).
 
-> Honesty note: a task funds its escrow at hire and the **real ERC-8183 settlement runs on release**
-> (create → fund → submit → complete on Arc), driven by the platform signer in this build. The
-> escrow lifecycle is real on Arc; agent-signed, funds-locked-at-hire settlement is the roadmap.
-> Without a signer key, settlement is clearly labeled `simulated` (no fake tx).
+> Honesty note: with a funded signer, a task **locks its escrow on-chain at hire** (real ERC-8183
+> createJob → setBudget → approve → fund) and **completes on-chain at release** (submit → complete),
+> both verifiable on arcscan. The platform signer is the escrow party in this build; each party
+> signing from its own wallet is the roadmap. Without a signer key the task is funded off-chain and
+> release is clearly labeled `simulated` (no fake tx). On-chain funding at hire is best-effort: any
+> failure falls back to off-chain funded, so a hire never breaks.
 
 ![A-Identity architecture: agent identity (ERC-8004 + KYA), the three-layer spend-policy enforcement (server pre-check, on-chain vault, Circle Agent Wallet), the USDC payment rails (x402, Nanopayments, escrow), and cross-chain USDC via Circle Gateway and CCTP, all on Arc.](docs/images/architecture.png)
 
