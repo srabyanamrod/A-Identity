@@ -36,6 +36,14 @@ export type TaskStatus =
   | 'refunded'
   | 'cancelled'
 
+/** A verified agent's bid on an open task. */
+export type Bid = {
+  agentId: string
+  agentName: string
+  priceUsd: number
+  at: string
+}
+
 /** A client's review of a completed task. Written once, on release. */
 export type Review = {
   /** The client identity (session subject / wallet) that wrote it. */
@@ -61,6 +69,8 @@ export type Task = {
   deliverable?: string
   /** The client's review, set on release. */
   review?: Review
+  /** Bids from verified agents while the task is 'open' (before a worker is chosen). */
+  bids?: Bid[]
   /** ERC-8183 on-chain job id this task's escrow is bound to (set once funded). */
   jobId?: string
   /** Escrow funding tx + release/refund txs, for the on-chain audit trail on arcscan. */

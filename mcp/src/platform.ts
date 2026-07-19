@@ -28,7 +28,7 @@ import { createAgentWallet, circlePay, readCircleWallet } from './circle-agent.j
 import { previewTreasury, startAutoYield, type TreasuryPreview, type TreasuryExecution } from './treasury.js'
 import { computeAgentReputation } from './reputation.js'
 import {
-  type Task, type TaskStatus, type Review,
+  type Task, type TaskStatus, type Review, type Bid,
   canTransition, normalizePriceUsd, normalizeDeadlineHours, deadlineFrom,
   sanitizeRating, aggregateRating, buildAgentManifest,
 } from './marketplace.js'
@@ -1400,6 +1400,93 @@ export function hireAgent(input: {
   return task
 }
 
+/**
+ * Post an OPEN task without choosing a worker: verified agents bid, the client picks one. The
+ * budget caps what any bid may charge. Client-only (any verified session).
+ */
+export function postOpenTask(input: {
+  service: string
+  budgetUsd: number
+  description?: string
+  deadlineHours?: number
+  client?: string
+}): Task | { error: string } {
+  if (!input.client) return { error: 'Forbidden: sign in with a verified session to post a task' }
+  const service = String(input.service ?? '').slice(0, 200).trim()
+  if (!service) return { error: 'service required' }
+  const budget = Math.min(normalizePriceUsd(input.budgetUsd), MARKETPLACE_MAX_TASK_USD)
+  if (budget <= 0) return { error: 'budgetUsd must be a positive number' }
+  const now = new Date().toISOString()
+  const task: Task = {
+    id: id('task'),
+    client: input.client,
+    agentId: '',
+    service,
+    priceUsd: budget,
+    description: String(input.description ?? '').slice(0, 2000),
+    status: 'open',
+    bids: [],
+    createdAt: now,
+    updatedAt: now,
+    deadlineAt: deadlineFrom(now, normalizeDeadlineHours(input.deadlineHours)),
+  }
+  state.tasks.push(task)
+  save(state)
+  return task
+}
+
+/** A verified agent bids on an open task (bid ≤ the task budget). Bidder = the agent owner. */
+export function bidOnTask(taskId: string, input: { agentId: string; priceUsd: number }, caller?: string): Task | { error: string } {
+  const task = state.tasks.find((t) => t.id === taskId)
+  if (!task) return { error: 'Unknown task' }
+  if (task.status !== 'open') return { error: `Cannot bid on a task in status ${task.status}` }
+  const agent = state.agents.find((a) => a.id === input.agentId)
+  if (!agent) return { error: 'Unknown agent' }
+  if (!ownsAgent(agent, caller)) return { error: 'Forbidden: not the agent owner' }
+  if (agent.kya !== 'verified') return { error: 'Only KYA-verified agents can bid' }
+  if (agent.services.length > 0 && !agent.services.some((s) => s.name === task.service)) {
+    return { error: `Agent does not offer service "${task.service}"` }
+  }
+  const priceUsd = Math.min(normalizePriceUsd(input.priceUsd), task.priceUsd)
+  if (priceUsd <= 0) return { error: 'bid priceUsd must be positive and no greater than the budget' }
+  const bid: Bid = { agentId: agent.id, agentName: agent.name, priceUsd, at: new Date().toISOString() }
+  task.bids = (task.bids ?? []).filter((b) => b.agentId !== agent.id)
+  task.bids.push(bid)
+  task.updatedAt = bid.at
+  pushActivity(agent, `Bid $${priceUsd.toFixed(2)} on open task ${task.id}`)
+  save(state)
+  return task
+}
+
+/** The client accepts a bid: the task is assigned to that agent and its escrow is committed. */
+export function acceptBid(taskId: string, agentId: string, caller?: string): Task | { error: string } {
+  const task = state.tasks.find((t) => t.id === taskId)
+  if (!task) return { error: 'Unknown task' }
+  if (task.client !== caller) return { error: 'Forbidden: only the client who posted can accept a bid' }
+  if (task.status !== 'open') return { error: `Task is not open (status ${task.status})` }
+  const bid = (task.bids ?? []).find((b) => b.agentId === agentId)
+  if (!bid) return { error: 'No such bid on this task' }
+  const agent = state.agents.find((a) => a.id === agentId)
+  if (!agent || agent.kya !== 'verified') return { error: 'The bidding agent is no longer verified' }
+  task.agentId = agentId
+  task.priceUsd = bid.priceUsd
+  transitionTask(task, 'assigned')
+  transitionTask(task, 'funded')
+  pushActivity(agent, `Won open task ${task.id} at $${bid.priceUsd.toFixed(2)}; escrow committed`)
+  save(state)
+  return task
+}
+
+/** Public list of open tasks awaiting bids (minimal, no client PII). */
+export function listOpenTasks() {
+  return {
+    tasks: state.tasks
+      .filter((t) => t.status === 'open')
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((t) => ({ id: t.id, service: t.service, budgetUsd: t.priceUsd, description: t.description, bids: (t.bids ?? []).length, createdAt: t.createdAt, deadlineAt: t.deadlineAt })),
+  }
+}
+
 /** The hired agent's owner delivers a result. funded -> delivered. */
 export function deliverTask(taskId: string, deliverable: string, caller?: string): Task | { error: string } {
   const task = state.tasks.find((t) => t.id === taskId)
@@ -1598,7 +1685,7 @@ export function agentManifest(agentId: string, baseUrl = ''): ReturnType<typeof 
  * plus a KYA challenge to prove wallet control next (only a KYA-verified agent is hireable).
  * Honest by design: nothing is verified until the wallet signature is proven.
  */
-export function registerExternalAgent(
+export async function registerExternalAgent(
   input: {
     name?: string
     description?: string
@@ -1610,7 +1697,7 @@ export function registerExternalAgent(
     owner?: string
   },
   baseUrl = '',
-): { agent: PlatformAgent; manifest: unknown; manifestUrl: string; kya: unknown } | { error: string } {
+): Promise<{ agent: PlatformAgent; manifest: unknown; manifestUrl: string; kya: unknown; circleWallet: unknown } | { error: string }> {
   if (!input.name || !String(input.name).trim()) return { error: 'name required' }
   const agent = createAgent({
     name: input.name,
@@ -1623,6 +1710,17 @@ export function registerExternalAgent(
     endpoint: input.endpoint,
     owner: input.owner,
   })
+  // Best-effort: open a Circle Developer-Controlled (MPC) wallet for the agent at register.
+  // Credential-gated (CIRCLE_API_KEY + CIRCLE_ENTITY_SECRET); a clean no-op reason without them,
+  // so registration always succeeds. This is the "a wallet opens at register" step.
+  let circleWallet: unknown
+  try {
+    const cw = await provisionCircleWallet(agent.id, { caller: input.owner })
+    circleWallet = 'error' in cw ? { provisioned: false, reason: cw.error } : { provisioned: true, ...cw }
+  } catch (e) {
+    circleWallet = { provisioned: false, reason: e instanceof Error ? e.message : String(e) }
+  }
+
   const manifestUrl = `${baseUrl}/api/v1/agents/manifest?agentId=${agent.id}`
   // The next step to become hireable: prove wallet control (KYA).
   let kya: unknown = { status: 'unverified', nextStep: 'Assign a wallet, then POST /api/agents/kya/challenge to prove control.' }
@@ -1632,7 +1730,7 @@ export function registerExternalAgent(
       ? { status: 'unverified', nextStep: ch.error }
       : { status: 'unverified', challenge: ch, nextStep: 'Sign this message with the agent wallet, then POST /api/agents/kya/verify.' }
   }
-  return { agent, manifest: agentManifest(agent.id, baseUrl), manifestUrl, kya }
+  return { agent, manifest: agentManifest(agent.id, baseUrl), manifestUrl, kya, circleWallet }
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

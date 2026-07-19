@@ -36,9 +36,12 @@ type Task = {
   settlement?: 'onchain' | 'simulated'
   jobId?: string
   escrowExplorer?: string
+  bids?: { agentId: string; agentName: string; priceUsd: number; at: string }[]
   createdAt: string
   updatedAt: string
 }
+
+type OpenTask = { id: string; service: string; budgetUsd: number; description: string; bids: number; createdAt: string }
 
 const STATUS_STYLES: Record<Task['status'], string> = {
   open: 'bg-foreground/8 text-foreground/60',
@@ -65,6 +68,13 @@ export default function WorkerCatalog() {
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState<Record<string, string>>({})
   const [deliverText, setDeliverText] = useState<Record<string, string>>({})
+  const [openTasks, setOpenTasks] = useState<OpenTask[]>([])
+  const [postSvc, setPostSvc] = useState('')
+  const [postBudget, setPostBudget] = useState('2')
+  const [postDesc, setPostDesc] = useState('')
+  const [bidKey, setBidKey] = useState<string | null>(null)
+  const [bidAgent, setBidAgent] = useState('')
+  const [bidPrice, setBidPrice] = useState('')
 
   const loadCatalog = useCallback(async () => {
     try {
@@ -89,10 +99,21 @@ export default function WorkerCatalog() {
     }
   }, [])
 
+  const loadOpenTasks = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/marketplace/open-tasks')
+      const data = await readJson<{ tasks?: OpenTask[] }>(res)
+      setOpenTasks(Array.isArray(data.tasks) ? data.tasks : [])
+    } catch {
+      /* public read; ignore if unavailable */
+    }
+  }, [])
+
   useEffect(() => {
     loadCatalog()
     loadTasks()
-  }, [loadCatalog, loadTasks])
+    loadOpenTasks()
+  }, [loadCatalog, loadTasks, loadOpenTasks])
 
   const setBusyNote = (key: string, msg: string) => setNote((n) => ({ ...n, [key]: msg }))
 
@@ -140,6 +161,76 @@ export default function WorkerCatalog() {
       await loadTasks()
     } catch {
       setBusyNote(taskId, 'Timed out. The backend may be waking up; try again.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function postTask() {
+    setBusy('post')
+    setBusyNote('post', '')
+    try {
+      const res = await apiFetch('/api/marketplace/post-task', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ service: postSvc.trim(), budgetUsd: Number(postBudget), description: postDesc.trim() }),
+      })
+      const data = await readJson<{ error?: string }>(res)
+      if (!res.ok) setBusyNote('post', explainError(res.status, data.error))
+      else {
+        setPostSvc('')
+        setPostDesc('')
+        setBusyNote('post', '')
+        await loadOpenTasks()
+      }
+    } catch {
+      setBusyNote('post', 'Could not post the task; try again.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function submitBid(taskId: string) {
+    setBusy(taskId)
+    setBusyNote(taskId, '')
+    try {
+      const res = await apiFetch('/api/marketplace/bid', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ taskId, agentId: bidAgent.trim(), priceUsd: Number(bidPrice) }),
+      })
+      const data = await readJson<{ error?: string }>(res)
+      if (!res.ok) setBusyNote(taskId, explainError(res.status, data.error))
+      else {
+        setBidKey(null)
+        setBidAgent('')
+        setBidPrice('')
+        await loadOpenTasks()
+      }
+    } catch {
+      setBusyNote(taskId, 'Could not bid; try again.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function acceptOpenBid(taskId: string, agentId: string) {
+    setBusy(taskId)
+    setBusyNote(taskId, '')
+    try {
+      const res = await apiFetch('/api/marketplace/accept-bid', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ taskId, agentId }),
+      })
+      const data = await readJson<{ error?: string }>(res)
+      if (!res.ok) setBusyNote(taskId, explainError(res.status, data.error))
+      else {
+        setBusyNote(taskId, '')
+        await Promise.all([loadTasks(), loadOpenTasks()])
+      }
+    } catch {
+      setBusyNote(taskId, 'Could not accept; try again.')
     } finally {
       setBusy(null)
     }
@@ -267,6 +358,55 @@ export default function WorkerCatalog() {
         })}
       </div>
 
+      {/* Open tasks: post a task, verified agents bid, you accept the best */}
+      <div className="mt-10">
+        <h3 className="text-lg font-bold tracking-tight">Open tasks</h3>
+        <p className="mt-1 text-sm text-foreground/55">Post a task without picking a worker; verified agents bid and you accept the best.</p>
+
+        <div className="mt-4 rounded-2xl border border-foreground/10 bg-card p-4">
+          <div className="grid gap-2 sm:grid-cols-[1fr_8rem_auto]">
+            <input value={postSvc} onChange={(e) => setPostSvc(e.target.value)} placeholder="Service (e.g. translation)" className="rounded-full border border-foreground/15 bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/40" />
+            <input value={postBudget} onChange={(e) => setPostBudget(e.target.value)} inputMode="decimal" placeholder="Budget USDC" className="rounded-full border border-foreground/15 bg-background px-3 py-2 text-sm text-foreground" />
+            <button type="button" onClick={postTask} disabled={busy === 'post' || !postSvc.trim()} className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Post task</button>
+          </div>
+          <input value={postDesc} onChange={(e) => setPostDesc(e.target.value)} placeholder="What should be done?" className="mt-2 w-full rounded-xl border border-foreground/15 bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/40" />
+          {note.post && <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">{note.post}</p>}
+        </div>
+
+        {openTasks.length === 0 ? (
+          <p className="mt-3 text-sm text-foreground/50">No open tasks right now.</p>
+        ) : (
+          <div className="mt-3 flex flex-col gap-2">
+            {openTasks.map((t) => (
+              <div key={t.id} className="rounded-2xl border border-foreground/10 bg-card p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span className="font-semibold text-foreground">{t.service}</span>
+                    <span className="ml-2 text-xs text-foreground/45">budget {t.budgetUsd.toFixed(2)} USDC · {t.bids} bid{t.bids === 1 ? '' : 's'}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setBidKey(bidKey === t.id ? null : t.id); setBidAgent(''); setBidPrice(String(t.budgetUsd)) }}
+                    className="rounded-full border border-foreground/15 px-3 py-1.5 text-xs font-semibold text-foreground/70 hover:bg-foreground/5"
+                  >
+                    Bid
+                  </button>
+                </div>
+                {t.description && <p className="mt-1 text-sm text-foreground/60">{t.description}</p>}
+                {bidKey === t.id && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <input value={bidAgent} onChange={(e) => setBidAgent(e.target.value)} placeholder="Your agent id (agent_…)" className="min-w-0 flex-1 rounded-full border border-foreground/15 bg-background px-3 py-1.5 text-xs text-foreground placeholder:text-foreground/40" />
+                    <input value={bidPrice} onChange={(e) => setBidPrice(e.target.value)} inputMode="decimal" placeholder="Bid USDC" className="w-24 rounded-full border border-foreground/15 bg-background px-3 py-1.5 text-xs text-foreground" />
+                    <button type="button" onClick={() => submitBid(t.id)} disabled={busy === t.id || !bidAgent.trim()} className="rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Submit bid</button>
+                  </div>
+                )}
+                {note[t.id] && <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">{note[t.id]}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* My hires: the caller's tasks with escrow actions */}
       {tasks.length > 0 && (
         <div className="mt-10">
@@ -296,6 +436,23 @@ export default function WorkerCatalog() {
                   )}
 
                   <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {/* Open task you posted: review bids and accept one */}
+                    {t.status === 'open' && (
+                      <div className="w-full">
+                        {(t.bids ?? []).length === 0 ? (
+                          <span className="text-xs text-foreground/45">No bids yet.</span>
+                        ) : (
+                          <div className="flex flex-col gap-1.5">
+                            {(t.bids ?? []).map((b) => (
+                              <div key={b.agentId} className="flex items-center justify-between gap-2 rounded-lg bg-foreground/5 px-2.5 py-1.5 text-xs">
+                                <span className="text-foreground/70">{b.agentName} · <b className="text-foreground">{b.priceUsd.toFixed(2)} USDC</b></span>
+                                <button type="button" onClick={() => acceptOpenBid(t.id, b.agentId)} disabled={busy === t.id} className="rounded-full bg-accent px-3 py-1 text-[11px] font-semibold text-white disabled:opacity-50">Accept</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {/* Worker side: deliver a funded task (server enforces agent ownership) */}
                     {t.status === 'funded' && (
                       <>

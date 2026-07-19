@@ -58,6 +58,10 @@ import {
   marketplaceCatalog,
   agentManifest,
   registerExternalAgent,
+  postOpenTask,
+  bidOnTask,
+  acceptBid,
+  listOpenTasks,
   type InstructionType,
 } from './platform.js'
 import { issueToken, verifyToken, isVerified } from './auth.js'
@@ -1062,6 +1066,37 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 'error' in t ? errStatus(t.error) : 200, t)
     return
   }
+  // Open tasks (post → bid → accept). Public list of open tasks awaiting bids.
+  if (req.method === 'GET' && url.pathname === '/api/marketplace/open-tasks') {
+    sendJson(res, 200, listOpenTasks())
+    return
+  }
+  // A client posts an open task (no worker chosen yet). Verified-only.
+  if (req.method === 'POST' && url.pathname === '/api/marketplace/post-task') {
+    const body = (await readBody(req).catch(() => null)) as { service?: string; budgetUsd?: number; description?: string; deadlineHours?: number } | null
+    if (!body?.service) { sendJson(res, 400, { error: 'service required' }); return }
+    if (!validAmount(body.budgetUsd, 1000)) { sendJson(res, 400, { error: 'budgetUsd must be a finite number between 0 and 1000' }); return }
+    const t = postOpenTask({ service: body.service, budgetUsd: body.budgetUsd, description: body.description, deadlineHours: body.deadlineHours, client: callerId })
+    sendJson(res, 'error' in t ? errStatus(t.error) : 201, t)
+    return
+  }
+  // A verified agent bids on an open task (bidder = the agent owner).
+  if (req.method === 'POST' && url.pathname === '/api/marketplace/bid') {
+    const body = (await readBody(req).catch(() => null)) as { taskId?: string; agentId?: string; priceUsd?: number } | null
+    if (!body?.taskId || !body?.agentId) { sendJson(res, 400, { error: 'taskId and agentId required' }); return }
+    if (!validAmount(body.priceUsd, 1000)) { sendJson(res, 400, { error: 'priceUsd must be a finite number between 0 and 1000' }); return }
+    const t = bidOnTask(body.taskId, { agentId: body.agentId, priceUsd: body.priceUsd }, callerId)
+    sendJson(res, 'error' in t ? errStatus(t.error) : 200, t)
+    return
+  }
+  // The client accepts a bid → task assigned + escrow committed.
+  if (req.method === 'POST' && url.pathname === '/api/marketplace/accept-bid') {
+    const body = (await readBody(req).catch(() => null)) as { taskId?: string; agentId?: string } | null
+    if (!body?.taskId || !body?.agentId) { sendJson(res, 400, { error: 'taskId and agentId required' }); return }
+    const t = acceptBid(body.taskId, body.agentId, callerId)
+    sendJson(res, 'error' in t ? errStatus(t.error) : 200, t)
+    return
+  }
   // Tasks: an owned agent's jobs (?agentId=, owner-only) or the caller's own hires.
   if (req.method === 'GET' && url.pathname === '/api/marketplace/tasks') {
     const agentId = url.searchParams.get('agentId') ?? undefined
@@ -1096,7 +1131,7 @@ const server = http.createServer(async (req, res) => {
     if (body.walletAddress && !/^0x[0-9a-fA-F]{40}$/.test(body.walletAddress)) {
       sendJson(res, 400, { error: 'walletAddress must be a 0x address' }); return
     }
-    const r = registerExternalAgent({
+    const r = await registerExternalAgent({
       name: body.name, description: body.description, category: body.category,
       capabilities: body.capabilities, services: body.services,
       walletAddress: body.walletAddress, endpoint: body.endpoint, owner: callerId,
