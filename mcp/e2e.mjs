@@ -376,6 +376,33 @@ async function main() {
     check('protocol fee accrued to treasury', typeof run.json?.protocolFee?.accruedUsd === 'number', JSON.stringify(run.json?.protocolFee)?.slice(0, 80))
   }
 
+  // ── T. Marketplace (hire → deliver → release; register API; MCP tools) ─────────
+  phase('T. Marketplace (hire → deliver → release)')
+  // kyaAgent is KYA-verified and owned by alice — the trusted worker; alice is also the client.
+  const catT = await api('GET', '/api/marketplace/catalog')
+  check('marketplace catalog lists services', Array.isArray(catT.json?.services))
+  const hireT = await api('POST', '/api/marketplace/hire', { token: alice, body: { agentId: kyaAgent, service: 'Payments', priceUsd: 2, description: 'e2e marketplace task' } })
+  check('hire a verified worker → task funded', hireT.status === 201 && hireT.json?.status === 'funded', `HTTP ${hireT.status} ${hireT.json?.status}`)
+  const marketTaskId = hireT.json?.id
+  const unverT = (await api('POST', '/api/agents', { token: alice, body: { name: `E2E Unver ${Date.now()}`, category: 'Other', capabilities: ['x'] } })).json?.agent?.id
+  const hireUnverT = await api('POST', '/api/marketplace/hire', { token: alice, body: { agentId: unverT, service: 'x', priceUsd: 1 } })
+  check('an unverified agent is not hireable (trusted-marketplace rule)', hireUnverT.status >= 400, `HTTP ${hireUnverT.status}`)
+  const delT = await api('POST', '/api/marketplace/deliver', { token: alice, body: { taskId: marketTaskId, deliverable: 'delivered by e2e' } })
+  check('worker delivers the task', delT.json?.status === 'delivered', delT.json?.status)
+  const relT = await api('POST', '/api/marketplace/release', { token: alice, body: { taskId: marketTaskId, rating: 5, review: 'ok' } })
+  check('client releases the escrow (ERC-8183 settlement)', relT.json?.status === 'released', `${relT.json?.status} / ${relT.json?.settlement}`)
+  // Public register API + per-agent manifest (AMP Discover)
+  const regAcctT = privateKeyToAccount(generatePrivateKey())
+  const regT = await api('POST', '/api/v1/agents/register', { token: alice, body: { name: `E2E Reg ${Date.now()}`, description: 'external self-register', capabilities: ['translation'], walletAddress: regAcctT.address } })
+  check('public register API returns agent + manifest + KYA challenge', regT.status === 201 && !!regT.json?.agent?.id && !!regT.json?.kya?.challenge?.message, `HTTP ${regT.status}`)
+  const manT = await api('GET', `/api/v1/agents/manifest?agentId=${regT.json?.agent?.id}`)
+  check('per-agent manifest served, unverified agent not hireable', manT.json?.protocol === 'a-identity/amp' && manT.json?.agent?.hireable === false)
+  // MCP marketplace tools: read is open; mutations require a verified session (Forbidden without)
+  const mcpFindT = await mcp('find_agent', { query: '' })
+  check('MCP find_agent returns the catalog', Array.isArray(mcpFindT.data?.services))
+  const mcpHireNoAuth = await mcp('hire_agent', { agentId: kyaAgent, service: 'Payments', priceUsd: 2 })
+  check('MCP hire_agent without a verified session is Forbidden', /forbidden/i.test(mcpHireNoAuth.data?.error || ''), mcpHireNoAuth.data?.error)
+
   // ── summary ─────────────────────────────────────────────────────────────────
   console.log(`\n${passed} passed, ${failed} failed`)
   if (failed) {
