@@ -1032,7 +1032,13 @@ function repOf(agent: PlatformAgent) {
 }
 
 export function agentReputation(agentId: string) {
-  const agent = state.agents.find((a) => a.id === agentId)
+  const q = agentId.trim()
+  // Resolve by platform id, on-chain token id ("#849980" / "849980"), or owner address, so the
+  // public get_reputation tool answers the same queries the trust explorer resolves identity with.
+  const agent =
+    state.agents.find((a) => a.id === q) ??
+    state.agents.find((a) => a.onchainAgentId && (a.onchainAgentId === q || `#${a.onchainAgentId}` === q)) ??
+    (/^0x[0-9a-fA-F]{40}$/.test(q) ? state.agents.find((a) => a.walletAddress?.toLowerCase() === q.toLowerCase()) : undefined)
   if (!agent) return { error: 'Unknown agent' }
   // A transparent echo of the behavioral inputs so a caller (or an OKX reviewer) sees WHY the
   // behavior band moved the score, not just the number. Every field is real, from state.tasks.
@@ -1045,7 +1051,7 @@ export function agentReputation(agentId: string) {
     avgRating: b.avgRating != null ? Math.round(b.avgRating * 100) / 100 : null,
     ratedJobs: b.ratedCount,
   }
-  return { agentId: agent.id, name: agent.name, onchain: agent.onchain, ...repOf(agent), behavioral, computedAt: new Date().toISOString() }
+  return { agentId: agent.id, name: agent.name, onchain: agent.onchain, kya: agent.kya, ...repOf(agent), behavioral, computedAt: new Date().toISOString() }
 }
 
 // ── instructions ──────────────────────────────────────────────────────────────

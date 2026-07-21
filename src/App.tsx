@@ -12,6 +12,7 @@ import Contact from './routes/Contact'
 import Blog from './routes/Blog'
 import BlogPost from './routes/BlogPost'
 import UseCase from './routes/UseCase'
+import Explorer from './routes/Explorer'
 import ProtectedRoute from './routes/ProtectedRoute'
 import AppLayout from './routes/app/AppLayout'
 import Dashboard from './routes/app/Dashboard'
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/blog" element={<Blog />} />
         <Route path="/blog/:slug" element={<BlogPost />} />
         <Route path="/use-cases/:slug" element={<UseCase />} />
+        <Route path="/explorer" element={<Explorer />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/app" element={<AppLayout />}>

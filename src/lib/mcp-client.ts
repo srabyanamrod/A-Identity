@@ -56,9 +56,23 @@ export type AgentIdentity = {
   chain?: string
 }
 
+export type Behavioral = {
+  completedJobs: number
+  contestedJobs: number
+  disputeRate: number
+  avgRating: number | null
+  ratedJobs: number
+}
+
 export type Reputation = {
   score: number
-  breakdown: { settlement: number; validation: number; tenure: number }
+  breakdown: { settlement: number; validation: number; tenure: number; behavior?: number }
+  behavioral?: Behavioral | null
+  settledOnchain?: number
+  settledUsd?: number
+  name?: string | null
+  onchain?: string
+  kya?: 'verified' | 'unverified' | 'revoked'
   agentId: string
   computedAt: string
 }
