@@ -1,15 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import {
-  ArrowLeftRight,
-  ArrowUpRight,
-  CreditCard,
-  ExternalLink,
-  Fingerprint,
-  SlidersHorizontal,
-  Star,
-} from 'lucide-react'
+import { ArrowUpRight, CreditCard, ExternalLink, Fingerprint, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '../../store/auth'
 import { useMcpHealth } from '../../hooks/useMcp'
 import { CHAINS } from '../../lib/chains'
@@ -22,12 +14,15 @@ import { pickPrimaryAgent } from '../../lib/pickAgent'
 const humanizeActivity = (text: string) =>
   text.replace(/0x[0-9a-fA-F]{40}/g, (a) => `${a.slice(0, 6)}...${a.slice(-4)}`)
 
+const gradeOf = (s: number) =>
+  s >= 800 ? 'Excellent' : s >= 650 ? 'Strong' : s >= 500 ? 'Good' : s >= 350 ? 'Fair' : s >= 200 ? 'Weak' : 'High risk'
+
 type Perms = { dailyCapUsd: number; autoApproveUnderUsd: number; frozen: boolean }
 type Agent = {
   id: string
   name: string
   walletAddress: string | null
-  kya: 'unverified' | 'verified'
+  kya: 'unverified' | 'verified' | 'revoked'
   onchain: 'queued' | 'registered'
   permissions: Perms
   activity: { at: string; text: string }[]
@@ -46,14 +41,10 @@ export default function Dashboard() {
   const user = useAuth((s) => s.user)
   const mcp = useMcpHealth() // 'checking' | 'waking' | 'online' | 'offline'
 
-  // Cold-start-aware MCP badge: a free-tier backend can take ~40s to wake.
-  const mcpTone =
-    mcp === 'online' ? 'bg-emerald-50 text-emerald-700 dark:text-emerald-300' : mcp === 'offline' ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-600'
-  const mcpDot = mcp === 'online' ? 'bg-emerald-400' : mcp === 'offline' ? 'bg-red-400' : 'bg-amber-400'
+  const mcpColor = mcp === 'online' ? '#059669' : mcp === 'offline' ? '#dc2626' : '#d97706'
   const mcpLabel =
     mcp === 'online' ? 'MCP live' : mcp === 'waking' ? 'Backend waking up' : mcp === 'checking' ? 'Connecting' : 'MCP offline'
 
-  // Real data for the user's first agent (empty until the backend answers).
   const [agent, setAgent] = useState<Agent | null>(null)
   const [rep, setRep] = useState<number | null>(null)
   const [balance, setBalance] = useState<number | null>(null)
@@ -96,7 +87,7 @@ export default function Dashboard() {
     }
   }, [])
 
-  const dash = '-'
+  const dash = '—'
   const p = agent?.permissions
   const statusItems = [
     {
@@ -133,146 +124,92 @@ export default function Dashboard() {
   const activity = agent?.activity ? [...agent.activity].slice(-6).reverse() : []
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="mx-auto max-w-5xl"
-    >
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }} className="mx-auto max-w-5xl">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Welcome back, {user?.name ?? 'there'}.</h2>
-          <p className="mt-1 text-sm text-foreground/55">
-            Your agent console. Everything your agent needs to act, with you in the tower.
-          </p>
+          <p className="mt-1 text-sm text-foreground/55">Your agent console. Everything your agent needs to act, with you in the tower.</p>
         </div>
-        {/* MCP live indicator (cold-start aware) */}
-        <div
-          className={`mt-1 flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${mcpTone}`}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${mcpDot} ${mcp === 'waking' || mcp === 'checking' ? 'animate-pulse' : ''}`} />
+        <div className="mt-1 inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md border border-border px-2.5 py-1.5 text-xs font-semibold text-foreground/70">
+          <span className={`h-1.5 w-1.5 rounded-full ${mcp === 'waking' || mcp === 'checking' ? 'animate-pulse' : ''}`} style={{ background: mcpColor }} />
           {mcpLabel}
         </div>
       </div>
 
-      {/* No-agent nudge (only once we know the backend answered and there's nothing yet) */}
       {loaded && !agent && (
-        <div className="mt-6 rounded-2xl border border-dashed border-foreground/15 bg-card p-6 text-sm text-foreground/60">
+        <div className="mt-6 rounded-xl border border-dashed border-border bg-card p-6 text-sm text-foreground/60">
           No agent registered yet.{' '}
-          <Link to="/app/agent-id" className="font-semibold text-accent hover:underline">
-            Claim an Agent ID
-          </Link>{' '}
+          <Link to="/app/agent-id" className="font-semibold text-accent hover:underline">Claim an Agent ID</Link>{' '}
           to give it a wallet, limits, and an on-chain passport.
         </div>
       )}
 
-      {/* Stat grid: real values, placeholder dashes until the backend answers */}
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard
-          icon={Star}
-          value={rep != null ? String(rep) : dash}
-          label="Reputation score"
-          sub="from real activity"
-          to="/app/agent-id"
-        />
-        <StatCard
-          icon={CreditCard}
-          value={balance != null ? `${balance.toFixed(2)}` : dash}
-          label="Wallet balance"
-          sub="USDC on Arc (live)"
-          to="/app/wallet"
-        />
-        <StatCard
-          icon={ArrowLeftRight}
-          value={settlements != null ? String(settlements) : dash}
-          label="Settlements"
-          sub="settled on-chain"
-          to="/app/settlements"
-        />
-        <StatCard
-          icon={SlidersHorizontal}
-          value={p ? `$${p.dailyCapUsd}` : dash}
-          label="Daily cap"
-          sub={p ? `auto-approve $${p.autoApproveUnderUsd}` : 'set your limits'}
-          to="/app/permissions"
-        />
+      {/* Stat strip: hairline-divided tiles, mono figures, credit-score spectrum on reputation */}
+      <div className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-4">
+        <StatTile to="/app/agent-id" label="Reputation" value={rep != null ? String(rep) : dash} sub={rep != null ? `${gradeOf(rep)} · / 1000` : 'from real activity'}>
+          {rep != null && (
+            <div className="mt-2 mb-0.5 h-1.5 w-full rounded-full" style={{ background: 'linear-gradient(90deg,#dc2626,#d97706 45%,#059669)' }}>
+              <div className="relative h-full">
+                <span className="absolute -top-0.5 h-2.5 w-[3px] -translate-x-1/2 rounded-full bg-foreground shadow-[0_0_0_2px_var(--color-card)]" style={{ left: `${Math.max(0, Math.min(100, rep / 10))}%` }} />
+              </div>
+            </div>
+          )}
+        </StatTile>
+        <StatTile to="/app/wallet" label="Wallet balance" value={balance != null ? balance.toFixed(2) : dash} sub="USDC on Arc · live" />
+        <StatTile to="/app/settlements" label="Settlements" value={settlements != null ? String(settlements) : dash} sub="settled on-chain" />
+        <StatTile to="/app/permissions" label="Daily cap" value={p ? `$${p.dailyCapUsd}` : dash} sub={p ? `auto-approve $${p.autoApproveUnderUsd}` : 'set your limits'} />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        {/* Agent status */}
-        <div className="rounded-2xl border border-foreground/[0.07] bg-card p-6 shadow-[0_1px_3px_rgba(16,24,40,0.04)] lg:col-span-2">
-          <h3 className="mb-4 font-semibold">Agent status</h3>
-          <ul className="flex flex-col gap-3">
+        {/* Agent status + network */}
+        <div className="rounded-xl border border-border bg-card p-6 lg:col-span-2">
+          <h3 className="mb-4 text-xs font-semibold uppercase tracking-wide text-foreground/50">Agent status</h3>
+          <ul className="flex flex-col gap-2">
             {statusItems.map(({ label, detail, ok, to, icon: Icon }) => (
-              <li
-                key={label}
-                className="flex items-center justify-between gap-3 rounded-xl border border-foreground/8 bg-background/50 px-4 py-3 transition-colors hover:border-foreground/15 hover:bg-background"
-              >
+              <li key={label} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background/40 px-4 py-3 transition-colors hover:bg-background">
                 <div className="flex items-center gap-3">
-                  <div className="grid h-8 w-8 place-items-center rounded-lg bg-accent/10 text-accent">
-                    <Icon size={15} />
-                  </div>
+                  <div className="grid h-8 w-8 place-items-center rounded-lg bg-foreground/[0.05] text-foreground/60"><Icon size={15} /></div>
                   <div>
                     <div className="text-sm font-semibold text-foreground">{label}</div>
-                    <div className="text-xs text-foreground/50">{detail}</div>
+                    <div className="font-mono text-xs text-foreground/50">{detail}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                      ok ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                    }`}
-                  >
+                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold" style={{ color: ok ? '#059669' : '#d97706', background: ok ? '#05966914' : '#d9770614' }}>
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: ok ? '#059669' : '#d97706' }} />
                     {ok ? 'Ready' : 'Pending'}
                   </span>
-                  <Link to={to} className="text-accent hover:opacity-70">
-                    <ArrowUpRight size={15} />
-                  </Link>
+                  <Link to={to} className="text-foreground/40 hover:text-accent"><ArrowUpRight size={15} /></Link>
                 </div>
               </li>
             ))}
           </ul>
 
-          {/* Multi-chain network panel (live) */}
-          <h3 className="mb-3 mt-6 font-semibold">Network</h3>
+          <h3 className="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-foreground/50">Network</h3>
           <div className="grid gap-2 sm:grid-cols-3">
             {CHAINS.map((c) => (
-                <div key={c.id} className="rounded-xl border border-foreground/8 bg-background/50 p-3">
-                  <div className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full" style={{ background: c.color }} />
-                    <span className="text-xs font-semibold text-foreground">{c.shortName}</span>
-                    <span
-                      className="ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
-                      style={{ background: c.color + '18', color: c.color }}
-                    >
-                      {c.status}
-                    </span>
-                  </div>
-                  <div className="mt-2 text-[11px] leading-relaxed text-foreground/45">
-                    {c.id === 'arc'
-                      ? agentTotal == null
-                        ? '-'
-                        : `${agentTotal} live agent${agentTotal === 1 ? '' : 's'}`
-                      : 'no live agents yet'}
-                  </div>
-                  {c.explorer && (
-                    <a
-                      href={c.explorer}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1 inline-flex items-center gap-0.5 text-[11px] font-semibold text-accent hover:underline"
-                    >
-                      Explorer <ExternalLink size={10} />
-                    </a>
-                  )}
+              <div key={c.id} className="rounded-lg border border-border bg-background/40 p-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full" style={{ background: c.color }} />
+                  <span className="text-xs font-semibold text-foreground">{c.shortName}</span>
+                  <span className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: c.color + '18', color: c.color }}>{c.status}</span>
                 </div>
-              ))}
+                <div className="mt-2 font-mono text-[11px] leading-relaxed text-foreground/45">
+                  {c.id === 'arc' ? (agentTotal == null ? '—' : `${agentTotal} live agent${agentTotal === 1 ? '' : 's'}`) : 'no live agents yet'}
+                </div>
+                {c.explorer && (
+                  <a href={c.explorer} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-0.5 text-[11px] font-semibold text-accent hover:underline">
+                    Explorer <ExternalLink size={10} />
+                  </a>
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Activity feed (real agent activity) */}
-        <div className="rounded-2xl border border-foreground/[0.07] bg-card p-6 shadow-[0_1px_3px_rgba(16,24,40,0.04)]">
-          <h3 className="mb-4 font-semibold">Recent activity</h3>
+        {/* Activity feed */}
+        <div className="rounded-xl border border-border bg-card p-6">
+          <h3 className="mb-4 text-xs font-semibold uppercase tracking-wide text-foreground/50">Recent activity</h3>
           {activity.length > 0 ? (
             <ul className="flex flex-col gap-4">
               {activity.map((a, i) => (
@@ -280,20 +217,15 @@ export default function Dashboard() {
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
                   <span className="min-w-0 break-words text-foreground/70">
                     {humanizeActivity(a.text)}
-                    <span className="block text-xs text-foreground/40">{ago(a.at)}</span>
+                    <span className="mt-0.5 block font-mono text-xs text-foreground/40">{ago(a.at)}</span>
                   </span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-foreground/45">
-              {loaded ? 'No activity yet. Register an agent and make a payment.' : 'Loading'}
-            </p>
+            <p className="text-sm text-foreground/45">{loaded ? 'No activity yet. Register an agent and make a payment.' : 'Loading'}</p>
           )}
-          <Link
-            to="/app/settlements"
-            className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-accent hover:underline"
-          >
+          <Link to="/app/settlements" className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-accent hover:underline">
             View all <ArrowUpRight size={14} />
           </Link>
         </div>
@@ -302,30 +234,13 @@ export default function Dashboard() {
   )
 }
 
-function StatCard({
-  icon: Icon,
-  value,
-  label,
-  sub,
-  to,
-}: {
-  icon: React.ComponentType<{ size?: number }>
-  value: string
-  label: string
-  sub: string
-  to: string
-}) {
+function StatTile({ to, label, value, sub, children }: { to: string; label: string; value: string; sub: string; children?: ReactNode }) {
   return (
-    <Link
-      to={to}
-      className="group flex flex-col rounded-2xl border border-foreground/[0.07] bg-card p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/30 hover:shadow-[0_10px_28px_rgba(16,24,40,0.08)]"
-    >
-      <div className="mb-3 grid h-9 w-9 place-items-center rounded-xl bg-accent/10 text-accent transition-transform duration-200 group-hover:scale-110">
-        <Icon size={18} />
-      </div>
-      <div className="text-2xl font-bold tracking-tight tabular-nums">{value}</div>
-      <div className="text-sm font-medium text-foreground/70">{label}</div>
-      <div className="mt-0.5 text-xs text-foreground/40">{sub}</div>
+    <Link to={to} className="group flex flex-col bg-card p-5 transition-colors hover:bg-foreground/[0.02]">
+      <div className="text-[11px] font-medium uppercase tracking-wide text-foreground/45">{label}</div>
+      <div className="mt-1.5 font-mono text-3xl font-bold tabular-nums tracking-tight text-foreground">{value}</div>
+      {children}
+      <div className="mt-1 text-[11px] text-foreground/40">{sub}</div>
     </Link>
   )
 }
