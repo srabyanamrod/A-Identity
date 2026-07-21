@@ -137,6 +137,31 @@ export async function getArcStatus(): Promise<
   }
 }
 
+export type FeedAgent = {
+  id: string
+  name: string
+  category: string
+  kya?: 'verified' | 'unverified' | 'revoked'
+  onchain?: string
+  onchainAgentId?: string | null
+  reputation?: { score: number; breakdown?: { settlement: number; validation: number; tenure: number; behavior?: number } }
+  walletAddress?: string | null
+  followers?: number
+}
+
+/** The public Agent House feed: KYA-verified agents ranked by trust. Backs the leaderboard. */
+export async function getLeaderboard(): Promise<{ ok: true; data: FeedAgent[] } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${BASE}/api/marketplace`, { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    const json = (await res.json()) as { agents?: FeedAgent[] }
+    return { ok: true, data: json.agents ?? [] }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { ok: false, error: msg.includes('fetch') ? 'MCP server offline' : msg }
+  }
+}
+
 export async function checkHealth(): Promise<boolean> {
   try {
     const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(3000) })
