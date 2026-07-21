@@ -12,6 +12,7 @@
 
 export type RiskDecision = 'ALLOW' | 'WARN' | 'DENY'
 export type RiskLevel = 'low' | 'medium' | 'high'
+export type SybilLevel = 'none' | 'low' | 'medium' | 'high'
 
 /** The real, verifiable signals a risk decision is computed from. */
 export type RiskSignals = {
@@ -25,6 +26,8 @@ export type RiskSignals = {
   tenureDays: number
   /** KYA was revoked / the agent is flagged as an incident. Forces DENY. */
   revoked?: boolean
+  /** Sybil / wash-reputation cluster risk (same-operator self-dealing). 'high' forces DENY. */
+  sybil?: SybilLevel
 }
 
 /** Optional transaction context — makes the decision amount-aware. */
@@ -49,6 +52,35 @@ const HIGH_VALUE_USD = 100 // "high value" relative to a low-rep counterparty
 const LARGE_TX_USD = 1000 // large absolute amount → always at least a warning
 const NEW_AGENT_DAYS = 7 // younger than this is a "new agent" caution
 
+/** Real Sybil / wash-reputation signals from platform state (same-operator hiring + cluster size). */
+export type SybilSignals = {
+  /** Other agents registered by the same owner (operator cluster size). */
+  siblingCount: number
+  /** This agent's committed hired jobs (as the worker). */
+  jobs: number
+  /** Distinct clients that hired it. */
+  uniqueClients: number
+  /** Jobs whose hirer is this agent's OWN operator (self-dealt / wash). */
+  selfDealt: number
+  /** selfDealt / jobs (0..1). */
+  selfDealRate: number
+  /** uniqueClients / jobs (0..1); low = concentrated/suspicious. */
+  diversity: number
+}
+
+/**
+ * Classify Sybil / wash-reputation risk from real platform signals: HIGH when reputation is
+ * mostly self-dealt (an operator hiring its own agents to inflate the score), MEDIUM on partial
+ * self-dealing or a large cluster with low counterparty diversity. Pure + unit-tested. Detects
+ * SAME-operator wash only; cross-operator collusion needs a funder-graph indexer (see /methodology).
+ */
+export function classifySybil(s: SybilSignals): SybilLevel {
+  if (s.jobs >= 2 && s.selfDealRate >= 0.6) return 'high'
+  if (s.selfDealRate >= 0.34 || (s.siblingCount >= 4 && s.jobs >= 2 && s.diversity < 0.4)) return 'medium'
+  if (s.selfDealt > 0 || s.siblingCount >= 4) return 'low'
+  return 'none'
+}
+
 /**
  * Assess counterparty risk. Returns a decision, a risk level, and the reasons.
  * DENY overrides WARN overrides ALLOW; reasons from every triggered rule are kept.
@@ -61,6 +93,9 @@ export function assessRisk(signals: RiskSignals, txContext: TxContext | null = n
   // ── DENY rules ────────────────────────────────────────────────────────────
   if (signals.revoked) {
     denyReasons.push('KYA has been REVOKED — this agent is flagged as an incident (compromised key or repeated disputes)')
+  }
+  if (signals.sybil === 'high') {
+    denyReasons.push('Reputation appears Sybil / wash-traded — most of its jobs were hired by its own operator, not independent counterparties')
   }
   if (!signals.onchainVerified) {
     denyReasons.push('No verifiable on-chain identity (ERC-8004) found for this agent')
@@ -80,6 +115,9 @@ export function assessRisk(signals: RiskSignals, txContext: TxContext | null = n
   }
   if (signals.reputationScore >= REP_DENY_BELOW && signals.reputationScore < REP_WARN_BELOW) {
     warnReasons.push(`Moderate reputation (${signals.reputationScore}); proceed with caution`)
+  }
+  if (signals.sybil === 'medium') {
+    warnReasons.push('Possible Sybil signals: partial same-operator hiring or low counterparty diversity')
   }
   if (signals.tenureDays < NEW_AGENT_DAYS) {
     warnReasons.push(`New agent (${signals.tenureDays}d tenure); limited on-chain track record`)

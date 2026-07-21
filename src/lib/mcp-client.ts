@@ -64,10 +64,20 @@ export type Behavioral = {
   ratedJobs: number
 }
 
+export type Sybil = {
+  level: 'none' | 'low' | 'medium' | 'high'
+  siblingCount: number
+  jobs: number
+  selfDealt: number
+  selfDealRate: number
+  diversity: number
+}
+
 export type Reputation = {
   score: number
   breakdown: { settlement: number; validation: number; tenure: number; behavior?: number }
   behavioral?: Behavioral | null
+  sybil?: Sybil | null
   settledOnchain?: number
   settledUsd?: number
   name?: string | null

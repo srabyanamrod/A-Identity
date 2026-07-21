@@ -19,10 +19,10 @@ const VERDICT: Record<Verdict, { color: string; Icon: typeof ShieldCheck }> = {
   WARN: { color: '#d97706', Icon: ShieldAlert },
   DENY: { color: '#dc2626', Icon: ShieldX },
 }
-function riskOf(score: number, kya?: string, verified = true): Verdict {
-  if (kya === 'revoked' || !verified) return 'DENY'
+function riskOf(score: number, kya?: string, verified = true, sybil?: string): Verdict {
+  if (kya === 'revoked' || !verified || sybil === 'high') return 'DENY'
   if (score < 200) return 'DENY'
-  if (score < 500) return 'WARN'
+  if (score < 500 || sybil === 'medium') return 'WARN'
   return 'ALLOW'
 }
 function grade(score: number): { label: string; tier: string } {
@@ -144,7 +144,7 @@ function TrustProfile({ identity, reputation, query }: { identity: AgentIdentity
   const verified = identity?.valid ?? reputation?.onchain === 'registered'
   const score = reputation?.score ?? 0
   const shownScore = useCountUp(score)
-  const verdict = riskOf(score, reputation?.kya, verified)
+  const verdict = riskOf(score, reputation?.kya, verified, reputation?.sybil?.level)
   const name = reputation?.name || (identity ? `Agent #${identity.tokenId}` : query)
   const bd = reputation?.breakdown
   const beh = reputation?.behavioral
@@ -171,6 +171,12 @@ function TrustProfile({ identity, reputation, query }: { identity: AgentIdentity
               : reputation?.kya === 'verified'
               ? <span className="rounded-md bg-foreground/[0.06] px-1.5 py-0.5 text-[11px] font-semibold text-foreground/60">KYA verified</span>
               : null}
+            {(reputation?.sybil?.level === 'high' || reputation?.sybil?.level === 'medium') && (
+              <span className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold" title={`${reputation.sybil.selfDealt}/${reputation.sybil.jobs} jobs hired by its own operator`}
+                style={{ color: reputation.sybil.level === 'high' ? '#dc2626' : '#d97706', background: reputation.sybil.level === 'high' ? '#dc26261a' : '#d977061a' }}>
+                Sybil risk: {reputation.sybil.level}
+              </span>
+            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-foreground/45">
             {identity && <span>#{identity.tokenId}</span>}

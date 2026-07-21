@@ -28,6 +28,7 @@ import {
 import { createAgentWallet, circlePay, readCircleWallet } from './circle-agent.js'
 import { previewTreasury, startAutoYield, type TreasuryPreview, type TreasuryExecution } from './treasury.js'
 import { computeAgentReputation } from './reputation.js'
+import { classifySybil, type SybilSignals } from './asp/risk.js'
 import {
   type Task, type TaskStatus, type Review, type Bid,
   canTransition, normalizePriceUsd, normalizeDeadlineHours, deadlineFrom,
@@ -1016,6 +1017,27 @@ function behavioralSignals(agent: PlatformAgent) {
   return { completedTasks, disputedTasks, ratedCount, avgRating }
 }
 
+/**
+ * Real Sybil / wash-reputation signals from platform state: how many agents share this agent's
+ * operator (owner), and how much of its hired work came from its OWN operator (self-dealing) vs
+ * independent clients. Same-operator hiring inflates reputation without real demand. Honest by
+ * design: cross-operator collusion is NOT detected here (it needs a funder-graph indexer).
+ */
+function sybilSignals(agent: PlatformAgent): SybilSignals {
+  const owner = agent.owner
+  const siblingCount = owner ? state.agents.filter((a) => a.owner === owner && a.id !== agent.id).length : 0
+  const hired = state.tasks.filter(
+    (t) => t.agentId === agent.id && t.status !== 'open' && t.status !== 'assigned' && t.status !== 'cancelled',
+  )
+  const jobs = hired.length
+  const clients = hired.map((t) => t.client).filter((c): c is string => typeof c === 'string' && c.length > 0)
+  const uniqueClients = new Set(clients).size
+  const selfDealt = owner ? clients.filter((c) => c === owner).length : 0
+  const selfDealRate = jobs ? selfDealt / jobs : 0
+  const diversity = jobs ? uniqueClients / jobs : 1
+  return { siblingCount, jobs, uniqueClients, selfDealt, selfDealRate, diversity }
+}
+
 function repOf(agent: PlatformAgent) {
   const ixs = state.instructions.filter((i) => i.agentId === agent.id)
   const settled = ixs.filter((i) => i.status === 'executed_onchain')
@@ -1051,7 +1073,18 @@ export function agentReputation(agentId: string) {
     avgRating: b.avgRating != null ? Math.round(b.avgRating * 100) / 100 : null,
     ratedJobs: b.ratedCount,
   }
-  return { agentId: agent.id, name: agent.name, onchain: agent.onchain, kya: agent.kya, ...repOf(agent), behavioral, computedAt: new Date().toISOString() }
+  // A transparent Sybil echo (level + the real signals behind it) so risk_check's DENY/WARN is
+  // explainable — every field is computed from state.agents + state.tasks, no fabrication.
+  const sig = sybilSignals(agent)
+  const sybil = {
+    level: classifySybil(sig),
+    siblingCount: sig.siblingCount,
+    jobs: sig.jobs,
+    selfDealt: sig.selfDealt,
+    selfDealRate: Math.round(sig.selfDealRate * 100) / 100,
+    diversity: Math.round(sig.diversity * 100) / 100,
+  }
+  return { agentId: agent.id, name: agent.name, onchain: agent.onchain, kya: agent.kya, ...repOf(agent), behavioral, sybil, computedAt: new Date().toISOString() }
 }
 
 // ── instructions ──────────────────────────────────────────────────────────────

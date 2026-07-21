@@ -66,7 +66,7 @@ export const PROOF = {
   },
   // The rigor behind the numbers — deterministic and unit-tested, not an LLM guess.
   engineering: {
-    tests: 132,
+    tests: 139,
     deterministicReputation: true,
     liveOnchainReads: 'ERC-8004 IdentityRegistry + ValidationRegistry (KYA) on Circle Arc, read live via viem',
     standards: ['ERC-8004', 'x402'],
@@ -100,16 +100,19 @@ export const METHODOLOGY = {
     decisions: ['ALLOW', 'WARN', 'DENY'],
     deny: [
       'KYA revoked (the agent is flagged as an incident)',
+      "Sybil / wash reputation: >= 60% of jobs hired by the agent's own operator",
       'no verifiable on-chain ERC-8004 identity',
       'reputation < 200',
       'transaction amount > $100 to an agent with reputation < 400',
     ],
     warn: [
       'KYA (wallet-control) not attested',
+      'Sybil signals: partial same-operator hiring or low counterparty diversity',
       'reputation in [200, 500)',
       'tenure < 7 days (new agent)',
       'transaction amount > $1000',
     ],
+    sybil: "Sybil/wash detection from real state: operator cluster size (agents per owner), self-deal rate (jobs hired by the agent's OWN operator), and counterparty diversity (distinct clients / jobs). HIGH = reputation mostly self-dealt -> DENY; MEDIUM -> WARN. Detects same-operator wash only; cross-operator collusion needs a funder-graph indexer (roadmap).",
     allow: 'none of the above — verified identity, attested KYA, strong reputation',
     note: 'DENY overrides WARN overrides ALLOW; every triggered reason is returned. Pure and unit-tested.',
   },

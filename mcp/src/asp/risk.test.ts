@@ -3,7 +3,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { assessRisk, type RiskSignals } from './risk.js'
+import { assessRisk, classifySybil, type RiskSignals, type SybilSignals } from './risk.js'
 
 const strong: RiskSignals = { onchainVerified: true, kyaVerified: true, reputationScore: 720, tenureDays: 90 }
 
@@ -83,4 +83,35 @@ test('a revoked agent is not also flagged as merely "KYA not attested"', () => {
   assert.equal(r.decision, 'DENY')
   assert.ok(r.reasons.some((x) => /REVOKED/i.test(x)))
   assert.ok(!r.reasons.some((x) => /not attested/i.test(x)), 'revoked should suppress the redundant not-attested warn')
+})
+
+// ── Sybil / wash-reputation detection (A4) ────────────────────────────────────────
+
+const cleanSybil: SybilSignals = { siblingCount: 0, jobs: 0, uniqueClients: 0, selfDealt: 0, selfDealRate: 0, diversity: 1 }
+
+test('classifySybil: reputation mostly self-dealt is HIGH', () => {
+  assert.equal(classifySybil({ ...cleanSybil, jobs: 5, uniqueClients: 1, selfDealt: 4, selfDealRate: 0.8, diversity: 0.2 }), 'high')
+})
+test('classifySybil: partial self-dealing is MEDIUM', () => {
+  assert.equal(classifySybil({ ...cleanSybil, jobs: 5, uniqueClients: 3, selfDealt: 2, selfDealRate: 0.4, diversity: 0.6 }), 'medium')
+})
+test('classifySybil: a large cluster with low diversity is MEDIUM', () => {
+  assert.equal(classifySybil({ ...cleanSybil, siblingCount: 5, jobs: 4, uniqueClients: 1, selfDealt: 0, selfDealRate: 0, diversity: 0.25 }), 'medium')
+})
+test('classifySybil: a bit of self-dealing or a cluster is LOW', () => {
+  assert.equal(classifySybil({ ...cleanSybil, jobs: 10, uniqueClients: 8, selfDealt: 1, selfDealRate: 0.1, diversity: 0.8 }), 'low')
+  assert.equal(classifySybil({ ...cleanSybil, siblingCount: 4 }), 'low')
+})
+test('classifySybil: independent clients => none', () => {
+  assert.equal(classifySybil({ ...cleanSybil, jobs: 8, uniqueClients: 7, selfDealt: 0, selfDealRate: 0, diversity: 0.875 }), 'none')
+})
+test('DENY: high Sybil risk forces a deny even for a strong agent (A4)', () => {
+  const r = assessRisk({ ...strong, sybil: 'high' })
+  assert.equal(r.decision, 'DENY')
+  assert.ok(r.reasons.some((x) => /Sybil|wash-traded/i.test(x)))
+})
+test('WARN: medium Sybil risk warns', () => {
+  const r = assessRisk({ ...strong, sybil: 'medium' })
+  assert.equal(r.decision, 'WARN')
+  assert.ok(r.reasons.some((x) => /Sybil/i.test(x)))
 })

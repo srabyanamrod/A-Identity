@@ -15,7 +15,7 @@ import { createIdentityProvider } from '../erc8004.js'
 import { readValidation } from '../arc-contracts.js'
 import { computeAgentReputation, type ReputationResult } from '../reputation.js'
 import { listPlatformAgents, agentReputation, type PlatformAgent } from '../platform.js'
-import { assessRisk, type RiskSignals, type TxContext } from './risk.js'
+import { assessRisk, type RiskSignals, type TxContext, type SybilLevel } from './risk.js'
 
 const DAY_MS = 86_400_000
 
@@ -28,7 +28,7 @@ type Bundle = {
   tokenId: bigint | null
   /** On-chain KYA validation summary (from the ValidationRegistry), if a token id is known. */
   validation: Awaited<ReturnType<typeof readValidation>> | null
-  reputation: ReputationResult & { basis: string; behavioral: BehavioralSummary | null }
+  reputation: ReputationResult & { basis: string; behavioral: BehavioralSummary | null; sybil: SybilSummary | null }
   onchainVerified: boolean
   kyaVerified: boolean
   kyaStatus: 'verified' | 'unverified' | 'revoked' | 'unknown'
@@ -39,6 +39,8 @@ type Bundle = {
 
 /** A transparent echo of the behavioral inputs behind the reputation `behavior` band. */
 type BehavioralSummary = { completedJobs: number; contestedJobs: number; disputeRate: number; avgRating: number | null; ratedJobs: number }
+/** A transparent echo of the Sybil signals behind a risk DENY/WARN. */
+type SybilSummary = { level: SybilLevel; siblingCount: number; jobs: number; selfDealt: number; selfDealRate: number; diversity: number }
 
 export const isAddress = (s: string) => /^0x[0-9a-fA-F]{40}$/.test(s)
 export const asTokenId = (s: string): bigint | null => {
@@ -119,15 +121,16 @@ async function gather(agentId: string): Promise<Bundle> {
   if (platform) {
     const r = agentReputation(platform.id)
     if ('error' in r) {
-      reputation = { ...computeAgentReputation({ settledCount: 0, rejected: 0, onchainRegistered: onchainVerified, createdAt: createdAt ?? new Date() }), basis: 'onchain-identity+tenure', behavioral: null }
+      reputation = { ...computeAgentReputation({ settledCount: 0, rejected: 0, onchainRegistered: onchainVerified, createdAt: createdAt ?? new Date() }), basis: 'onchain-identity+tenure', behavioral: null, sybil: null }
     } else {
-      reputation = { score: r.score, breakdown: r.breakdown, settledOnchain: r.settledOnchain, settledUsd: r.settledUsd, basis: 'platform-settlements+identity+tenure+behavior', behavioral: r.behavioral }
+      reputation = { score: r.score, breakdown: r.breakdown, settledOnchain: r.settledOnchain, settledUsd: r.settledUsd, basis: 'platform-settlements+identity+tenure+behavior', behavioral: r.behavioral, sybil: r.sybil }
     }
   } else {
     reputation = {
       ...computeAgentReputation({ settledCount: 0, rejected: 0, onchainRegistered: onchainVerified, createdAt: createdAt ?? new Date() }),
       basis: onchainVerified ? 'onchain-identity+tenure (no platform settlement history)' : 'no verifiable signals',
       behavioral: null,
+      sybil: null,
     }
   }
 
@@ -186,6 +189,7 @@ export async function reputationScore(agentId: string) {
     score: b.reputation.score,
     breakdown: b.reputation.breakdown,
     behavioral: b.reputation.behavioral,
+    sybil: b.reputation.sybil,
     settledOnchain: b.reputation.settledOnchain,
     settledUsd: b.reputation.settledUsd,
     basis: b.reputation.basis,
@@ -202,6 +206,7 @@ export async function riskCheck(agentId: string, txContext: TxContext | null = n
     reputationScore: b.reputation.score,
     tenureDays: b.tenureDays,
     revoked: b.revoked,
+    sybil: b.reputation.sybil?.level,
   }
   const r = assessRisk(signals, txContext)
   return {
@@ -220,7 +225,7 @@ export async function riskCheck(agentId: string, txContext: TxContext | null = n
 export async function agentPassport(agentId: string) {
   const b = await gather(agentId)
   const risk = assessRisk(
-    { onchainVerified: b.onchainVerified, kyaVerified: b.kyaVerified, reputationScore: b.reputation.score, tenureDays: b.tenureDays, revoked: b.revoked },
+    { onchainVerified: b.onchainVerified, kyaVerified: b.kyaVerified, reputationScore: b.reputation.score, tenureDays: b.tenureDays, revoked: b.revoked, sybil: b.reputation.sybil?.level },
     null,
   )
   return {
@@ -234,7 +239,7 @@ export async function agentPassport(agentId: string) {
       : null,
     verified: b.onchainVerified,
     kya: { status: b.kyaStatus, revoked: b.revoked, onchain: b.validation ?? null },
-    reputation: { score: b.reputation.score, breakdown: b.reputation.breakdown, behavioral: b.reputation.behavioral, settledOnchain: b.reputation.settledOnchain, settledUsd: b.reputation.settledUsd, basis: b.reputation.basis },
+    reputation: { score: b.reputation.score, breakdown: b.reputation.breakdown, behavioral: b.reputation.behavioral, sybil: b.reputation.sybil, settledOnchain: b.reputation.settledOnchain, settledUsd: b.reputation.settledUsd, basis: b.reputation.basis },
     risk: { decision: risk.decision, level: risk.risk, reasons: risk.reasons },
     platform: b.platform
       ? {
